@@ -18,7 +18,9 @@ export function VendorGuard({ children }: { children: React.ReactNode }) {
 
   // Wait for zustand's persisted state to hydrate before deciding, otherwise we
   // could redirect a logged-in vendor on the first paint.
-  const [hydrated, setHydrated] = useState(() => useAuthStore.persist.hasHydrated());
+  // Start false so server prerender and first client paint agree; the effect
+  // flips it once zustand's persisted state has hydrated (client-only).
+  const [hydrated, setHydrated] = useState(false);
   useEffect(() => {
     const unsub = useAuthStore.persist.onFinishHydration(() => setHydrated(true));
     if (useAuthStore.persist.hasHydrated()) setHydrated(true);

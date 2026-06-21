@@ -20,7 +20,9 @@ export default function OnboardingPage() {
   const refreshToken = useAuthStore((s) => s.refreshToken);
   const setSession = useAuthStore((s) => s.setSession);
 
-  const [hydrated, setHydrated] = useState(() => useAuthStore.persist.hasHydrated());
+  // Start false so server prerender and first client paint agree; the effect
+  // flips it once zustand's persisted state has hydrated (client-only).
+  const [hydrated, setHydrated] = useState(false);
   useEffect(() => {
     const unsub = useAuthStore.persist.onFinishHydration(() => setHydrated(true));
     if (useAuthStore.persist.hasHydrated()) setHydrated(true);
