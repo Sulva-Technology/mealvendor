@@ -1,0 +1,53 @@
+@import "tailwindcss";
+
+@theme {
+  --color-primary: #065f46; /* Deep Emerald */
+  --color-primary-foreground: #ffffff;
+  --color-accent: #f59e0b; /* Warm Mango/Gold */
+  --color-accent-foreground: #ffffff;
+
+  --color-background: #fdfbf7; /* Warm Ivory */
+  --color-foreground: #022c22; /* Dark green-black */
+
+  --color-surface: #ffffff; /* White/near-white */
+  --color-surface-foreground: #022c22;
+  
+  --color-success: #15803d; /* Rich Green */
+  --color-warning: #d97706; /* Amber */
+  --color-error: #b91c1c; /* Deep Red */
+  --color-info: #0369a1; /* Refined Blue */
+
+  --color-muted: #e2e8f0; /* Soft gray */
+  --color-muted-foreground: #64748b; /* Soft gray green-ish */
+  
+  --color-border: #e2e8f0;
+  
+  --radius-sm: 0.25rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+  --radius-xl: 1rem;
+}
+
+@layer base {
+  body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    font-family: var(--font-sans), system-ui, sans-serif;
+  }
+}
+
+/* Utilities for glassmorphism */
+@layer utilities {
+  .glass {
+    @apply bg-white/70 backdrop-blur-md border border-white/40 shadow-sm;
+  }
+  .glass-dark {
+    @apply bg-black/70 backdrop-blur-md border border-white/10 shadow-sm text-white;
+  }
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .pt-safe {
+    padding-top: env(safe-area-inset-top);
+  }
+}

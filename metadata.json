@@ -1,0 +1,6 @@
+{
+  "name": "Meal Direct Vendor Portal",
+  "description": "Production Vendor PWA for Meal Direct, managing orders, inventory, menus, and payments.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
