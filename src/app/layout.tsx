@@ -8,9 +8,39 @@ const inter = Inter({
   variable: '--font-sans',
 });
 
+const SITE_URL = 'https://vendor.mealdirectly.com';
+const SITE_NAME = 'Meal Direct Vendor';
+const SITE_DESC = 'Manage your Meal Direct store, orders, and inventory.';
+
 export const metadata: Metadata = {
-  title: 'Meal Direct Vendor',
-  description: 'Manage your Meal Direct store, orders, and inventory.',
+  metadataBase: new URL(SITE_URL),
+  title: {
+    default: SITE_NAME,
+    template: `%s · ${SITE_NAME}`,
+  },
+  description: SITE_DESC,
+  applicationName: SITE_NAME,
+  // Auth-gated portal: keep it entirely out of search indexes.
+  robots: {
+    index: false,
+    follow: false,
+    nocache: true,
+    googleBot: { index: false, follow: false },
+  },
+  openGraph: {
+    type: 'website',
+    siteName: SITE_NAME,
+    title: SITE_NAME,
+    description: SITE_DESC,
+    url: SITE_URL,
+    images: [{ url: '/logofull.png', alt: SITE_NAME }],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: SITE_NAME,
+    description: SITE_DESC,
+    images: ['/logofull.png'],
+  },
   manifest: '/manifest.json',
   icons: {
     icon: [
