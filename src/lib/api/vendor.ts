@@ -40,6 +40,15 @@ function qs(params: Record<string, unknown>): string {
 // fetchApi already unwraps the top-level `{ data }` envelope, so list endpoints
 // return the array directly and item endpoints return the object directly.
 
+// Where Supabase should send the vendor after they click a link in an auth email
+// (confirm signup, and any future reset/resend flows). Sent to OUR backend as
+// `redirectTo`; the backend forwards it to `supabase.auth.*` as `emailRedirectTo`.
+// Must be allow-listed in the Supabase auth settings; otherwise Supabase falls
+// back to its configured site URL. The field is optional — when omitted the
+// backend uses a per-role default. Override per deploy via NEXT_PUBLIC_AUTH_REDIRECT_URL.
+export const AUTH_REDIRECT_URL =
+  process.env.NEXT_PUBLIC_AUTH_REDIRECT_URL || 'https://vendor.mealdirectly.com/auth/callback';
+
 // --- Auth ---
 export const authApi = {
   login: (email: string, password: string) =>
@@ -52,7 +61,7 @@ export const authApi = {
     fetchApi<AuthTokens>('/auth/vendor/signup', {
       method: 'POST',
       auth: false,
-      body: JSON.stringify({ email, password }),
+      body: JSON.stringify({ email, password, redirectTo: AUTH_REDIRECT_URL }),
     }),
   /** Exchange a refresh token for fresh tokens (e.g. after onboarding to pick up vendor_id). */
   refresh: (refreshToken: string) =>
