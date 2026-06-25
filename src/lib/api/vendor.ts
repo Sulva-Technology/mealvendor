@@ -29,6 +29,24 @@ import type {
   VendorReview,
 } from './types';
 
+// Availability + menu-item schedule share the same write DTO: ONLY
+// deliverySlotId/dayOfWeek/available (+ optional valid window) are accepted.
+// GET responses include extra props (id, menuItemId); echoing them back trips
+// the backend's strict validation ("property id should not exist"), so strip
+// every payload down to the allowed fields before sending.
+function toSlotDayEntry(e: AvailabilityEntry | MenuItemSchedule) {
+  const out: {
+    deliverySlotId: string;
+    dayOfWeek: number;
+    available: boolean;
+    validFrom?: string | null;
+    validUntil?: string | null;
+  } = { deliverySlotId: e.deliverySlotId, dayOfWeek: e.dayOfWeek, available: e.available };
+  if (e.validFrom !== undefined) out.validFrom = e.validFrom;
+  if (e.validUntil !== undefined) out.validUntil = e.validUntil;
+  return out;
+}
+
 function qs(params: Record<string, unknown>): string {
   const sp = new URLSearchParams();
   for (const [k, v] of Object.entries(params)) {
@@ -156,7 +174,7 @@ export const menuApi = {
   replaceSchedules: (id: string, entries: MenuItemSchedule[]) =>
     fetchApi<MenuItemSchedule[]>(`/vendor/menu-items/${id}/schedules`, {
       method: 'PUT',
-      body: JSON.stringify({ entries }),
+      body: JSON.stringify({ entries: entries.map(toSlotDayEntry) }),
     }),
 };
 
@@ -202,7 +220,7 @@ export const availabilityApi = {
   replace: (entries: AvailabilityEntry[]) =>
     fetchApi<AvailabilityEntry[]>('/vendor/availability', {
       method: 'PUT',
-      body: JSON.stringify({ entries }),
+      body: JSON.stringify({ entries: entries.map(toSlotDayEntry) }),
     }),
 };
 
