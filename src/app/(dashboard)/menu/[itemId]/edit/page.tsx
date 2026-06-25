@@ -7,11 +7,15 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { TonalCard } from '@/src/components/shared/Cards';
 import { StatusChip } from '@/src/components/shared/StatusChip';
 import { LoadingState, ErrorState } from '@/src/components/shared/QueryStates';
-import { menuApi, qk } from '@/src/lib/api/vendor';
-import type { CreateMenuItemBody } from '@/src/lib/api/types';
+import { menuApi, campusesApi, profileApi, qk } from '@/src/lib/api/vendor';
+import type { CreateMenuItemBody, MenuItemSchedule } from '@/src/lib/api/types';
 import { ArrowLeft, Save, AlertCircle } from 'lucide-react';
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+function schedKey(slotId: string, day: number) {
+  return `${slotId}__${day}`;
+}
 
 export default function EditMenuItemPage({ params }: { params: Promise<{ itemId: string }> }) {
   const router = useRouter();
@@ -26,6 +30,28 @@ export default function EditMenuItemPage({ params }: { params: Promise<{ itemId:
     queryFn: () => menuApi.listSchedules(itemId),
     enabled: !isNew,
   });
+
+  // Slot columns come from the campus config, NOT from saved schedule rows
+  // (which are empty until the vendor first toggles + saves). Without this the
+  // vendor can never open a slot for an item, so the backend never generates
+  // daily inventory for it.
+  const profileQ = useQuery({ queryKey: qk.profile(), queryFn: profileApi.get, enabled: !isNew });
+  const campusId = profileQ.data?.campusId;
+  const slotsQ = useQuery({
+    queryKey: campusId ? qk.deliverySlots(campusId) : ['delivery-slots', 'pending'],
+    queryFn: () => campusesApi.deliverySlots(campusId as string),
+    enabled: !isNew && !!campusId,
+  });
+
+  // Local editable copy of schedules keyed by slot+day.
+  const [schedMap, setSchedMap] = useState<Map<string, MenuItemSchedule>>(new Map());
+  useEffect(() => {
+    if (schedulesQ.data) {
+      const m = new Map<string, MenuItemSchedule>();
+      for (const s of schedulesQ.data) m.set(schedKey(s.deliverySlotId, s.dayOfWeek), s);
+      setSchedMap(m);
+    }
+  }, [schedulesQ.data]);
 
   const [form, setForm] = useState({
     name: '',
@@ -92,15 +118,26 @@ export default function EditMenuItemPage({ params }: { params: Promise<{ itemId:
   });
 
   const saveSchedules = useMutation({
-    mutationFn: (entries: NonNullable<typeof schedulesQ.data>) => menuApi.replaceSchedules(itemId, entries),
+    mutationFn: () => menuApi.replaceSchedules(itemId, [...schedMap.values()]),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: qk.menuSchedules(itemId) }),
   });
+
+  const toggleSchedule = (slotId: string, day: number) => {
+    setSchedMap((prev) => {
+      const next = new Map(prev);
+      const k = schedKey(slotId, day);
+      const existing = next.get(k);
+      if (existing) next.set(k, { ...existing, available: !existing.available });
+      else next.set(k, { deliverySlotId: slotId, dayOfWeek: day, available: true });
+      return next;
+    });
+  };
 
   if (!isNew && itemQ.isLoading) return <LoadingState label="Loading item…" />;
   if (!isNew && itemQ.isError) return <ErrorState error={itemQ.error} onRetry={() => itemQ.refetch()} />;
 
   const active = itemQ.data?.active ?? true;
-  const schedules = schedulesQ.data ?? [];
+  const slots = [...(slotsQ.data ?? [])].sort((a, b) => a.displayOrder - b.displayOrder);
 
   return (
     <div className="space-y-6 max-w-6xl mx-auto pb-16 md:pb-0">
@@ -248,9 +285,9 @@ export default function EditMenuItemPage({ params }: { params: Promise<{ itemId:
             <TonalCard>
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-lg font-semibold tracking-tight text-[var(--color-foreground)]">Schedule Availability</h2>
-                {schedules.length > 0 && (
+                {slots.length > 0 && (
                   <button
-                    onClick={() => saveSchedules.mutate(schedules)}
+                    onClick={() => saveSchedules.mutate()}
                     disabled={saveSchedules.isPending}
                     className="text-sm font-medium text-[var(--color-primary)] hover:underline disabled:opacity-50"
                   >
@@ -258,34 +295,45 @@ export default function EditMenuItemPage({ params }: { params: Promise<{ itemId:
                   </button>
                 )}
               </div>
-              {schedulesQ.isLoading ? (
+              {schedulesQ.isLoading || profileQ.isLoading || slotsQ.isLoading ? (
                 <LoadingState label="Loading schedule…" rows={2} />
-              ) : schedules.length === 0 ? (
+              ) : slots.length === 0 ? (
                 <p className="text-sm text-[var(--color-muted-foreground)]">
-                  No slot schedules configured for this item yet. Slots are derived from your campus delivery
-                  slots — once configured they will appear here as per-day toggles.
+                  No campus delivery slots exist yet. Once your campus admin configures delivery slots they
+                  will appear here as per-day toggles.
                 </p>
               ) : (
-                <div className="space-y-2">
-                  {schedules.map((s, idx) => (
-                    <label
-                      key={`${s.deliverySlotId}-${s.dayOfWeek}`}
-                      className="flex items-center justify-between gap-3 p-3 border border-[var(--color-border)] rounded-lg"
-                    >
-                      <span className="text-sm font-medium text-[var(--color-foreground)]">
-                        {DAYS[s.dayOfWeek] ?? `Day ${s.dayOfWeek}`} • slot {s.deliverySlotId.slice(0, 8)}
-                      </span>
-                      <input
-                        type="checkbox"
-                        checked={s.available}
-                        onChange={(e) => {
-                          const next = [...schedules];
-                          next[idx] = { ...s, available: e.target.checked };
-                          queryClient.setQueryData(qk.menuSchedules(itemId), next);
-                        }}
-                        className="w-4 h-4 text-[var(--color-primary)] focus:ring-[var(--color-primary)]"
-                      />
-                    </label>
+                <div className="space-y-4">
+                  <p className="text-xs text-[var(--color-muted-foreground)]">
+                    Tick the slots and days this item is offered. Inventory only appears once the item is
+                    active, scheduled here, and the day is open in your delivery availability.
+                  </p>
+                  {slots.map((slot) => (
+                    <div key={slot.id} className="border border-[var(--color-border)] rounded-lg p-3">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-sm font-medium text-[var(--color-foreground)]">{slot.name}</span>
+                        <span className="text-xs text-[var(--color-muted-foreground)]">{slot.deliveryTime}</span>
+                      </div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {DAYS.map((d, dayIdx) => {
+                          const on = schedMap.get(schedKey(slot.id, dayIdx))?.available ?? false;
+                          return (
+                            <button
+                              key={d}
+                              type="button"
+                              onClick={() => toggleSchedule(slot.id, dayIdx)}
+                              className={`px-2.5 py-1 rounded-md text-xs font-medium border transition-colors ${
+                                on
+                                  ? 'border-[var(--color-primary)] bg-[var(--color-primary)]/10 text-[var(--color-primary)]'
+                                  : 'border-[var(--color-border)] text-[var(--color-muted-foreground)] hover:bg-gray-50'
+                              }`}
+                            >
+                              {d}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
                   ))}
                 </div>
               )}
