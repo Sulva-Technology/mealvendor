@@ -39,7 +39,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ orderId:
 
   // Contextual primary action based on the order's current status.
   let action: { label: string; run: () => void } | null = null;
-  if (['paid', 'confirmed', 'pending_payment'].includes(order.orderStatus)) {
+  if (['paid', 'confirmed'].includes(order.orderStatus)) {
     action = { label: 'Accept Order', run: () => acceptM.mutate() };
   } else if (order.orderStatus === 'accepted') {
     action = { label: 'Start Preparing', run: () => prepareM.mutate() };
