@@ -9,6 +9,7 @@ import type {
   BatchSummary,
   CreateAdjustmentBody,
   CreateMenuItemBody,
+  DeliverySlot,
   ItemEnvelope,
   ListEnvelope,
   MenuItemSchedule,
@@ -77,6 +78,10 @@ export const authApi = {
 // --- Public campus directory (no auth) ---
 export const campusesApi = {
   list: () => fetchApi<Campus[]>('/campuses', { auth: false }),
+  // Delivery slots are configured per-campus (by admin); vendors read them to
+  // know which slots exist before toggling per-day availability.
+  deliverySlots: (campusId: string) =>
+    fetchApi<DeliverySlot[]>(`/campuses/${campusId}/delivery-slots`, { auth: false }),
 };
 
 // --- Vendor onboarding ---
@@ -91,6 +96,7 @@ export const onboardingApi = {
 // --- Query keys ---
 export const qk = {
   campuses: () => ['public', 'campuses'] as const,
+  deliverySlots: (campusId: string) => ['public', 'campuses', campusId, 'delivery-slots'] as const,
   orders: (filters?: Record<string, unknown>) => ['vendor', 'orders', filters ?? {}] as const,
   order: (id: string) => ['vendor', 'order', id] as const,
   menuItems: () => ['vendor', 'menu-items'] as const,

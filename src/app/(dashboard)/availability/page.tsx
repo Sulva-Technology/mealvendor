@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { TonalCard } from '@/src/components/shared/Cards';
 import { LoadingState, ErrorState, EmptyState } from '@/src/components/shared/QueryStates';
-import { availabilityApi, qk } from '@/src/lib/api/vendor';
+import { availabilityApi, campusesApi, profileApi, qk } from '@/src/lib/api/vendor';
 import type { AvailabilityEntry } from '@/src/lib/api/types';
 import { Save, AlertCircle, CalendarClock } from 'lucide-react';
 
@@ -16,6 +16,19 @@ function key(slotId: string, day: number) {
 
 export default function AvailabilityPage() {
   const queryClient = useQueryClient();
+
+  // The vendor's campus owns the delivery slots; we need it to list them.
+  const profileQuery = useQuery({ queryKey: qk.profile(), queryFn: profileApi.get });
+  const campusId = profileQuery.data?.campusId;
+
+  // Slot columns come from the campus config — NOT from saved availability rows,
+  // which are empty until the vendor first toggles and saves.
+  const slotsQuery = useQuery({
+    queryKey: campusId ? qk.deliverySlots(campusId) : ['delivery-slots', 'pending'],
+    queryFn: () => campusesApi.deliverySlots(campusId as string),
+    enabled: !!campusId,
+  });
+
   const query = useQuery({ queryKey: qk.availability(), queryFn: availabilityApi.list });
 
   // Local editable copy keyed by slot+day.
@@ -39,8 +52,15 @@ export default function AvailabilityPage() {
     },
   });
 
-  const entries = query.data ?? [];
-  const slotIds = [...new Set(entries.map((e) => e.deliverySlotId))];
+  const slots = [...(slotsQuery.data ?? [])].sort((a, b) => a.displayOrder - b.displayOrder);
+  const isLoading = profileQuery.isLoading || slotsQuery.isLoading || query.isLoading;
+  const isError = profileQuery.isError || slotsQuery.isError || query.isError;
+  const error = profileQuery.error ?? slotsQuery.error ?? query.error;
+  const refetch = () => {
+    profileQuery.refetch();
+    slotsQuery.refetch();
+    query.refetch();
+  };
 
   const toggle = (slotId: string, day: number) => {
     setMap((prev) => {
@@ -84,11 +104,11 @@ export default function AvailabilityPage() {
         <p className="text-sm text-[var(--color-error)]">{(save.error as Error).message}</p>
       )}
 
-      {query.isLoading ? (
+      {isLoading ? (
         <LoadingState label="Loading schedule…" />
-      ) : query.isError ? (
-        <ErrorState error={query.error} onRetry={() => query.refetch()} />
-      ) : slotIds.length === 0 ? (
+      ) : isError ? (
+        <ErrorState error={error} onRetry={refetch} />
+      ) : slots.length === 0 ? (
         <EmptyState
           title="No delivery slots configured"
           description="Your campus delivery slots have not been set up yet. Once they exist, you can toggle availability per day here."
@@ -103,9 +123,10 @@ export default function AvailabilityPage() {
                   <thead className="bg-gray-50 border-b border-[var(--color-border)]">
                     <tr>
                       <th className="px-4 py-4 font-semibold text-[var(--color-foreground)] w-32 sticky left-0 bg-gray-50 z-10">Day</th>
-                      {slotIds.map((slotId, i) => (
-                        <th key={slotId} className="px-4 py-4 font-medium text-center min-w-[100px] text-[var(--color-muted-foreground)]">
-                          Slot {i + 1}
+                      {slots.map((slot) => (
+                        <th key={slot.id} className="px-4 py-4 font-medium text-center min-w-[120px] text-[var(--color-muted-foreground)]">
+                          <div className="text-[var(--color-foreground)]">{slot.name}</div>
+                          <div className="text-xs font-normal">{slot.deliveryTime}</div>
                         </th>
                       ))}
                     </tr>
@@ -114,17 +135,17 @@ export default function AvailabilityPage() {
                     {DAYS.map((day, dayIdx) => (
                       <tr key={day} className="hover:bg-gray-50/50 transition-colors">
                         <td className="px-4 py-4 font-medium text-[var(--color-foreground)] sticky left-0 bg-white z-10">{day}</td>
-                        {slotIds.map((slotId) => {
-                          const entry = map.get(key(slotId, dayIdx));
+                        {slots.map((slot) => {
+                          const entry = map.get(key(slot.id, dayIdx));
                           const checked = entry?.available ?? false;
                           return (
-                            <td key={slotId} className="px-4 py-4 text-center">
+                            <td key={slot.id} className="px-4 py-4 text-center">
                               <label className="relative inline-flex items-center cursor-pointer">
                                 <input
                                   type="checkbox"
                                   className="sr-only peer"
                                   checked={checked}
-                                  onChange={() => toggle(slotId, dayIdx)}
+                                  onChange={() => toggle(slot.id, dayIdx)}
                                 />
                                 <div className="w-11 h-6 bg-gray-200 peer-focus:ring-2 peer-focus:ring-[var(--color-primary)]/20 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[var(--color-primary)]" />
                               </label>

@@ -322,6 +322,21 @@ export interface UpsertPayoutAccountBody {
   paystackRecipientCode?: string;
 }
 
+// --- Delivery slots (campus-configured; read-only for vendors) ---
+export interface DeliverySlot {
+  id: string;
+  campusId: string;
+  name: string;
+  deliveryTime: string;
+  cutoffMinutes: number;
+  active: boolean;
+  displayOrder: number;
+  orderingCutoffAt?: string | null;
+  acceptingOrders?: boolean | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 // --- Availability ---
 export interface AvailabilityEntry {
   id?: string;
