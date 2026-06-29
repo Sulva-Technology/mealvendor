@@ -120,7 +120,7 @@ export default function DashboardHome() {
 
         <TonalCard className="flex flex-col min-h-[400px]">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-semibold tracking-tight">Today's Batches</h2>
+            <h2 className="text-lg font-semibold tracking-tight">Today&apos;s Batches</h2>
             <Link href="/batches" className="text-sm font-medium text-[var(--color-primary)] hover:underline">
               Manage
             </Link>

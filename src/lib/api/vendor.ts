@@ -17,6 +17,7 @@ import type {
   NotificationRecord,
   OrderDetail,
   OrderSummary,
+  PushSubscriptionBody,
   SettlementSummary,
   UpdateInventoryBody,
   UpdateMenuItemBody,
@@ -81,6 +82,17 @@ export const authApi = {
       method: 'POST',
       auth: false,
       body: JSON.stringify({ email, password, redirectTo: AUTH_REDIRECT_URL }),
+    }),
+  /**
+   * Send a password-reset email. The backend (which brokers Supabase) emails a
+   * recovery link that lands on /auth/callback. Body is `{email}` only — the
+   * endpoint whitelists strictly, so no `redirectTo` here (per-role default used).
+   */
+  requestPasswordReset: (email: string) =>
+    fetchApi<unknown>('/auth/password-reset', {
+      method: 'POST',
+      auth: false,
+      body: JSON.stringify({ email }),
     }),
   /** Exchange a refresh token for fresh tokens (e.g. after onboarding to pick up vendor_id). */
   refresh: (refreshToken: string) =>
@@ -230,6 +242,16 @@ export const notificationsApi = {
   markRead: (id: string) =>
     fetchApi<unknown>(`/notifications/${id}/read`, { method: 'POST' }),
   markAllRead: () => fetchApi<unknown>('/notifications/read-all', { method: 'POST' }),
+  registerPushSubscription: (body: PushSubscriptionBody) =>
+    fetchApi<unknown>('/notifications/push-subscriptions', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  deletePushSubscription: (endpoint: string) =>
+    fetchApi<unknown>('/notifications/push-subscriptions', {
+      method: 'DELETE',
+      body: JSON.stringify({ endpoint }),
+    }),
 };
 
 // --- Profile ---

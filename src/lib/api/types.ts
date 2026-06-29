@@ -269,6 +269,16 @@ export interface NotificationRecord {
   updatedAt: string;
 }
 
+export interface PushSubscriptionBody {
+  endpoint: string;
+  expirationTime?: number | null;
+  keys: {
+    p256dh: string;
+    auth: string;
+  };
+  userAgent?: string;
+}
+
 // --- Profile ---
 export type DeliveryMode = 'meal_direct_rider' | 'vendor_delivery';
 
@@ -286,6 +296,12 @@ export interface VendorProfile {
   status: 'pending' | 'approved' | 'suspended' | 'deactivated';
   active: boolean;
   defaultDeliveryMode: DeliveryMode;
+  /**
+   * Vendor's own takeaway/packaging fee in kobo. `null` = no override → the
+   * platform global default (₦200) applies. Must be ≤ the campus's
+   * `maxServiceFeeKobo` ceiling (enforced backend-side).
+   */
+  serviceFeeKobo?: number | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -298,6 +314,8 @@ export interface UpdateVendorProfileBody {
   logoUrl?: string | null;
   kitchenLocation?: string | null;
   defaultDeliveryMode?: DeliveryMode;
+  /** ₦ takeaway fee in kobo; `null` clears the override (falls back to default). */
+  serviceFeeKobo?: number | null;
 }
 
 export interface VendorPayoutAccount {
