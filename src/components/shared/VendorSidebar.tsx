@@ -16,7 +16,7 @@ export function VendorSidebar() {
       <div className="flex items-center h-16 shrink-0 px-6 bg-white/50 border-b border-[var(--color-border)]">
         {/* Brand */}
         <Image
-          src="/logo.png"
+          src="/icon-192.png"
           alt="Meal Direct"
           width={32}
           height={32}

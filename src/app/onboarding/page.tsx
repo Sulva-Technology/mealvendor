@@ -213,12 +213,12 @@ export default function OnboardingPage() {
       <div className="w-full max-w-md space-y-6 glass p-8 rounded-[var(--radius-xl)] shadow-lg">
         <div className="text-center space-y-2">
           <Image
-            src="/logo.png"
+            src="/icon-192.png"
             alt="Meal Direct"
             width={64}
             height={64}
             priority
-            className="mx-auto h-16 w-16 rounded-3xl shadow-sm"
+            className="mx-auto h-16 w-16 rounded-2xl shadow-sm"
           />
           <h2 className="text-2xl font-bold tracking-tight text-[var(--color-foreground)]">
             Set up your store

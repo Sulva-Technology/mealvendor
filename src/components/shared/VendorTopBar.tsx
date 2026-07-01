@@ -33,7 +33,7 @@ export function VendorTopBar() {
       {/* Mobile Brand */}
       <div className="flex md:hidden items-center flex-1">
         <Image
-          src="/logo.png"
+          src="/icon-192.png"
           alt="Meal Direct"
           width={28}
           height={28}
