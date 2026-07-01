@@ -1,5 +1,6 @@
 import { fetchApi } from './client';
 import type {
+  AcceptInviteBody,
   AuthTokens,
   Campus,
   VendorOnboardBody,
@@ -103,6 +104,13 @@ export const authApi = {
     }),
   logout: () => fetchApi<unknown>('/auth/logout', { method: 'POST' }).catch(() => null),
   me: () => fetchApi<unknown>('/auth/me'),
+  /** Admin-invited vendor sets a password and links their account in one step. */
+  acceptInvite: (body: AcceptInviteBody) =>
+    fetchApi<AuthTokens>('/auth/vendor/accept-invite', {
+      method: 'POST',
+      auth: false,
+      body: JSON.stringify(body),
+    }),
 };
 
 // --- Public campus directory (no auth) ---

@@ -6,6 +6,7 @@ import { TonalCard } from '@/src/components/shared/Cards';
 import { LoadingState, ErrorState, EmptyState } from '@/src/components/shared/QueryStates';
 import { availabilityApi, campusesApi, profileApi, qk } from '@/src/lib/api/vendor';
 import type { AvailabilityEntry } from '@/src/lib/api/types';
+import { useVendorApproval } from '@/src/lib/hooks/useVendorApproval';
 import { Save, AlertCircle, CalendarClock } from 'lucide-react';
 
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -16,6 +17,8 @@ function key(slotId: string, day: number) {
 
 export default function AvailabilityPage() {
   const queryClient = useQueryClient();
+  const { isApproved } = useVendorApproval();
+  const lockTitle = 'Available once your vendor account is approved';
 
   // The vendor's campus owns the delivery slots; we need it to list them.
   const profileQuery = useQuery({ queryKey: qk.profile(), queryFn: profileApi.get });
@@ -63,6 +66,7 @@ export default function AvailabilityPage() {
   };
 
   const toggle = (slotId: string, day: number) => {
+    if (!isApproved) return;
     setMap((prev) => {
       const next = new Map(prev);
       const k = key(slotId, day);
@@ -88,7 +92,8 @@ export default function AvailabilityPage() {
         </div>
         <button
           onClick={() => save.mutate()}
-          disabled={!dirty || save.isPending}
+          disabled={!dirty || save.isPending || !isApproved}
+          title={!isApproved ? lockTitle : undefined}
           className="px-4 py-2 bg-[var(--color-primary)] text-white rounded-lg text-sm font-medium hover:bg-[var(--color-primary)]/90 flex items-center justify-center gap-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {save.isPending ? (
@@ -140,14 +145,18 @@ export default function AvailabilityPage() {
                           const checked = entry?.available ?? false;
                           return (
                             <td key={slot.id} className="px-4 py-4 text-center">
-                              <label className="relative inline-flex items-center cursor-pointer">
+                              <label
+                                className={`relative inline-flex items-center ${isApproved ? 'cursor-pointer' : 'cursor-not-allowed'}`}
+                                title={!isApproved ? lockTitle : undefined}
+                              >
                                 <input
                                   type="checkbox"
                                   className="sr-only peer"
                                   checked={checked}
+                                  disabled={!isApproved}
                                   onChange={() => toggle(slot.id, dayIdx)}
                                 />
-                                <div className="w-11 h-6 bg-gray-200 peer-focus:ring-2 peer-focus:ring-[var(--color-primary)]/20 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[var(--color-primary)]" />
+                                <div className="w-11 h-6 bg-gray-200 peer-focus:ring-2 peer-focus:ring-[var(--color-primary)]/20 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[var(--color-primary)] peer-disabled:opacity-50" />
                               </label>
                             </td>
                           );

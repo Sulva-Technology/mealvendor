@@ -6,6 +6,7 @@ import { VendorTopBar } from './VendorTopBar';
 import { VendorMobileBottomNav } from './VendorMobileBottomNav';
 import { InstallPrompt } from './InstallPrompt';
 import { AppUpdatePrompt } from './AppUpdatePrompt';
+import { PendingApprovalBanner } from './PendingApprovalBanner';
 
 export function VendorAppShell({ children }: { children: React.ReactNode }) {
   return (
@@ -22,6 +23,7 @@ export function VendorAppShell({ children }: { children: React.ReactNode }) {
         {/* Main Content Area */}
         <main className="flex-1 overflow-y-auto w-full p-4 md:p-8 pb-24 md:pb-8">
           <div className="max-w-7xl mx-auto space-y-6">
+            <PendingApprovalBanner />
             {children}
           </div>
         </main>

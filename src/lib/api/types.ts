@@ -20,6 +20,14 @@ export interface AuthTokens {
   message?: string;
 }
 
+export interface AcceptInviteBody {
+  email: string;
+  password: string;
+  token: string;
+  fullName?: string;
+  redirectTo?: string;
+}
+
 // --- Orders ---
 export type OrderStatus =
   | 'pending_payment'

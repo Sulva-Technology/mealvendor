@@ -8,6 +8,7 @@ import { Modal } from '@/src/components/shared/Modal';
 import { LoadingState, ErrorState } from '@/src/components/shared/QueryStates';
 import { profileApi, authApi, notificationsApi, qk } from '@/src/lib/api/vendor';
 import { useAuthStore } from '@/src/lib/auth/session';
+import { useVendorApproval } from '@/src/lib/hooks/useVendorApproval';
 import type { DeliveryMode, VendorPayoutAccount, VendorProfile } from '@/src/lib/api/types';
 import { formatNaira } from '@/src/lib/format';
 import {
@@ -414,6 +415,7 @@ export default function SettingsPage() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const clearSession = useAuthStore((s) => s.clearSession);
+  const { isApproved } = useVendorApproval();
   const [signingOut, setSigningOut] = useState(false);
   const [editingPayout, setEditingPayout] = useState(false);
 
@@ -608,8 +610,9 @@ export default function SettingsPage() {
             </div>
             <button
               onClick={() => setEditingPayout(true)}
-              disabled={payoutQ.isLoading}
-              className="shrink-0 inline-flex items-center gap-1.5 px-3 py-2 border border-[var(--color-border)] rounded-lg text-sm font-medium text-[var(--color-foreground)] hover:bg-gray-50 transition-colors disabled:opacity-50"
+              disabled={payoutQ.isLoading || !isApproved}
+              title={!isApproved ? 'Available once your vendor account is approved' : undefined}
+              className="shrink-0 inline-flex items-center gap-1.5 px-3 py-2 border border-[var(--color-border)] rounded-lg text-sm font-medium text-[var(--color-foreground)] hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <CreditCard className="w-4 h-4" />
               {payoutQ.data ? 'Edit' : 'Add account'}

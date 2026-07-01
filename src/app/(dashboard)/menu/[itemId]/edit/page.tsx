@@ -9,6 +9,7 @@ import { StatusChip } from '@/src/components/shared/StatusChip';
 import { LoadingState, ErrorState } from '@/src/components/shared/QueryStates';
 import { menuApi, campusesApi, profileApi, qk } from '@/src/lib/api/vendor';
 import type { CreateMenuItemBody, MenuItemSchedule } from '@/src/lib/api/types';
+import { useVendorApproval } from '@/src/lib/hooks/useVendorApproval';
 import { ArrowLeft, Save, AlertCircle } from 'lucide-react';
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -22,6 +23,8 @@ export default function EditMenuItemPage({ params }: { params: Promise<{ itemId:
   const { itemId } = use(params);
   const isNew = itemId === 'new';
   const queryClient = useQueryClient();
+  const { isApproved } = useVendorApproval();
+  const lockTitle = 'Available once your vendor account is approved';
 
   const metaQ = useQuery({ queryKey: qk.menuMetadata(), queryFn: menuApi.metadata });
   const itemQ = useQuery({ queryKey: qk.menuItem(itemId), queryFn: () => menuApi.get(itemId), enabled: !isNew });
@@ -161,16 +164,18 @@ export default function EditMenuItemPage({ params }: { params: Promise<{ itemId:
           {!isNew && (
             <button
               onClick={() => toggleActive.mutate()}
-              disabled={toggleActive.isPending}
-              className="px-4 py-2 border border-[var(--color-border)] rounded-lg text-sm font-medium hover:bg-gray-50 flex-1 sm:flex-none text-[var(--color-foreground)] transition-colors disabled:opacity-50"
+              disabled={toggleActive.isPending || !isApproved}
+              title={!isApproved ? lockTitle : undefined}
+              className="px-4 py-2 border border-[var(--color-border)] rounded-lg text-sm font-medium hover:bg-gray-50 flex-1 sm:flex-none text-[var(--color-foreground)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {active ? 'Deactivate' : 'Activate'}
             </button>
           )}
           <button
             onClick={() => save.mutate()}
-            disabled={save.isPending || !form.name || !form.unitTypeId || !form.priceNaira}
-            className="px-4 py-2 bg-[var(--color-primary)] text-white rounded-lg text-sm font-medium hover:bg-[var(--color-primary)]/90 flex-1 sm:flex-none flex items-center justify-center gap-2 transition-colors disabled:opacity-50"
+            disabled={save.isPending || !form.name || !form.unitTypeId || !form.priceNaira || !isApproved}
+            title={!isApproved ? lockTitle : undefined}
+            className="px-4 py-2 bg-[var(--color-primary)] text-white rounded-lg text-sm font-medium hover:bg-[var(--color-primary)]/90 flex-1 sm:flex-none flex items-center justify-center gap-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {save.isPending ? (
               <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
@@ -288,8 +293,9 @@ export default function EditMenuItemPage({ params }: { params: Promise<{ itemId:
                 {slots.length > 0 && (
                   <button
                     onClick={() => saveSchedules.mutate()}
-                    disabled={saveSchedules.isPending}
-                    className="text-sm font-medium text-[var(--color-primary)] hover:underline disabled:opacity-50"
+                    disabled={saveSchedules.isPending || !isApproved}
+                    title={!isApproved ? lockTitle : undefined}
+                    className="text-sm font-medium text-[var(--color-primary)] hover:underline disabled:opacity-50 disabled:no-underline disabled:cursor-not-allowed"
                   >
                     {saveSchedules.isPending ? 'Saving…' : 'Save schedule'}
                   </button>
@@ -321,8 +327,10 @@ export default function EditMenuItemPage({ params }: { params: Promise<{ itemId:
                             <button
                               key={d}
                               type="button"
+                              disabled={!isApproved}
+                              title={!isApproved ? lockTitle : undefined}
                               onClick={() => toggleSchedule(slot.id, dayIdx)}
-                              className={`px-2.5 py-1 rounded-md text-xs font-medium border transition-colors ${
+                              className={`px-2.5 py-1 rounded-md text-xs font-medium border transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
                                 on
                                   ? 'border-[var(--color-primary)] bg-[var(--color-primary)]/10 text-[var(--color-primary)]'
                                   : 'border-[var(--color-border)] text-[var(--color-muted-foreground)] hover:bg-gray-50'
