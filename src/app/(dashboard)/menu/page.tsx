@@ -8,11 +8,13 @@ import { StatusChip } from '@/src/components/shared/StatusChip';
 import { LoadingState, ErrorState, EmptyState } from '@/src/components/shared/QueryStates';
 import { menuApi, qk } from '@/src/lib/api/vendor';
 import { formatNaira } from '@/src/lib/format';
-import { Plus, Search, UtensilsCrossed } from 'lucide-react';
+import { useVendorApproval } from '@/src/lib/hooks/useVendorApproval';
+import { Lock, Plus, Search, UtensilsCrossed } from 'lucide-react';
 
 export default function MenuPage() {
   const [search, setSearch] = useState('');
   const queryClient = useQueryClient();
+  const { isApproved } = useVendorApproval();
 
   const query = useQuery({ queryKey: qk.menuItems(), queryFn: menuApi.list });
 
@@ -33,13 +35,23 @@ export default function MenuPage() {
           <h1 className="text-2xl font-semibold tracking-tight text-[var(--color-foreground)]">Menu Items</h1>
           <p className="text-sm text-[var(--color-muted-foreground)]">Manage your food offerings and base prices.</p>
         </div>
-        <Link
-          href="/menu/new/edit"
-          className="flex items-center gap-2 px-4 py-2 bg-[var(--color-primary)] text-white text-sm font-medium rounded-lg hover:bg-[var(--color-primary)]/90 transition-colors shadow-sm"
-        >
-          <Plus className="h-4 w-4" />
-          Add Item
-        </Link>
+        {isApproved ? (
+          <Link
+            href="/menu/new/edit"
+            className="flex items-center gap-2 px-4 py-2 bg-[var(--color-primary)] text-white text-sm font-medium rounded-lg hover:bg-[var(--color-primary)]/90 transition-colors shadow-sm"
+          >
+            <Plus className="h-4 w-4" />
+            Add Item
+          </Link>
+        ) : (
+          <span
+            title="Available once your vendor account is approved"
+            className="flex items-center gap-2 px-4 py-2 bg-gray-100 text-[var(--color-muted-foreground)] text-sm font-medium rounded-lg cursor-not-allowed"
+          >
+            <Lock className="h-4 w-4" />
+            Add Item
+          </span>
+        )}
       </div>
 
       <div className="flex items-center gap-2 mb-6">
@@ -80,8 +92,9 @@ export default function MenuPage() {
                 </div>
                 <button
                   onClick={() => toggle.mutate({ id: item.id, active: item.active })}
-                  disabled={toggle.isPending}
-                  className="text-xs font-medium text-[var(--color-primary)] hover:underline disabled:opacity-50"
+                  disabled={toggle.isPending || !isApproved}
+                  title={!isApproved ? 'Available once your vendor account is approved' : undefined}
+                  className="text-xs font-medium text-[var(--color-primary)] hover:underline disabled:opacity-50 disabled:no-underline disabled:cursor-not-allowed"
                 >
                   {item.active ? 'Deactivate' : 'Activate'}
                 </button>

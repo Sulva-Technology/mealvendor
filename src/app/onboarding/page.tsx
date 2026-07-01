@@ -91,7 +91,7 @@ export default function OnboardingPage() {
       return;
     }
     setSession(fresh);
-    // Vendors are auto-approved today, but honor status if the backend gates it.
+    // Public signups now land as PENDING — admin approval required before the dashboard unlocks.
     if (vendor && vendor.status !== 'approved') {
       setAwaiting(vendor);
       return;

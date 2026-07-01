@@ -3,10 +3,14 @@
 import React, { useState } from 'react';
 import { AlertCircle } from 'lucide-react';
 import Image from 'next/image';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { authApi } from '@/src/lib/api/vendor';
 import { useAuthStore } from '@/src/lib/auth/session';
 import { ApiError } from '@/src/lib/api/client';
+
+const TERMS_URL = process.env.NEXT_PUBLIC_TERMS_URL || 'https://mealdirectly.com/terms';
+const PRIVACY_URL = process.env.NEXT_PUBLIC_PRIVACY_URL || 'https://mealdirect.com/privacy';
 
 export default function LoginPage() {
   const [loading, setLoading] = useState(false);
@@ -120,10 +124,34 @@ export default function LoginPage() {
               Waking up the server — the first sign-in after a pause can take ~30s.
             </p>
           )}
+          <Link
+            href="/auth/forgot-password"
+            className="block text-center text-xs text-[var(--color-primary)] hover:underline"
+          >
+            Forgot password?
+          </Link>
         </form>
 
         <p className="text-center text-xs text-[var(--color-muted-foreground)] pt-2">
-          By signing in, you agree to our Terms of Service and Privacy Policy.
+          By signing in, you agree to our{' '}
+          <a
+            href={TERMS_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-[var(--color-primary)] hover:underline"
+          >
+            Terms of Service
+          </a>{' '}
+          and{' '}
+          <a
+            href={PRIVACY_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-[var(--color-primary)] hover:underline"
+          >
+            Privacy Policy
+          </a>
+          .
         </p>
       </div>
     </div>

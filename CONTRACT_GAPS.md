@@ -1,12 +1,17 @@
-# API Contract Gaps & Mock Data Acknowledgement
+# API Contract Notes
 
-This file tracks the missing backend endpoints and data models for the Meal Direct Vendor Portal MVP.
+Backend boundaries and frontend conventions for the Meal Direct Vendor Portal.
+There is no mock layer — every screen reads live data from the backend.
 
-## Currently Mocked / Gaps
-- **Authentication**: Supabase OAuth is configured but the preview environment might not have valid Redirect URIs. A mocked bypass for the preview environment is available in the login page.
-- **Paystack Webhooks**: Settled amounts are read-only and backend processes webhooks from Paystack.
+## Backend-owned (read-only here)
+- **Authentication**: Email/password against `/auth/vendor/login`. The frontend
+  never talks to Supabase directly; the backend brokers auth and any email
+  redirect (`redirectTo` / `NEXT_PUBLIC_AUTH_REDIRECT_URL`).
+- **Settlements & payouts**: Settled amounts are computed backend-side from
+  Paystack webhooks. Vendors can read settlements and edit their payout account,
+  but cannot mutate settled figures.
 
-## Frontend Offline Rules Applied
-- Financial and inventory mutations are treated as **network-only** (no offline optimistic UI).
-- The PWA Service Worker handles navigation fallbacks using the `/offline` route.
-
+## Frontend conventions
+- Financial and inventory mutations are **network-only** — no offline optimistic
+  UI. Mutations carry an `Idempotency-Key`.
+- The PWA service worker serves the `/offline` route as the navigation fallback.

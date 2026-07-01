@@ -6,10 +6,32 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { TonalCard } from '@/src/components/shared/Cards';
 import { Modal } from '@/src/components/shared/Modal';
 import { LoadingState, ErrorState } from '@/src/components/shared/QueryStates';
-import { profileApi, authApi, qk } from '@/src/lib/api/vendor';
+import { profileApi, authApi, notificationsApi, qk } from '@/src/lib/api/vendor';
 import { useAuthStore } from '@/src/lib/auth/session';
-import type { DeliveryMode, VendorPayoutAccount } from '@/src/lib/api/types';
-import { Store, Truck, LogOut, Check, AlertCircle, CreditCard } from 'lucide-react';
+import { useVendorApproval } from '@/src/lib/hooks/useVendorApproval';
+import type { DeliveryMode, VendorPayoutAccount, VendorProfile } from '@/src/lib/api/types';
+import { formatNaira } from '@/src/lib/format';
+import {
+  Store,
+  Truck,
+  LogOut,
+  Check,
+  AlertCircle,
+  CreditCard,
+  Coins,
+  BellRing,
+  Loader2,
+} from 'lucide-react';
+import {
+  getBrowserPushReadiness,
+  getCurrentPushSubscription,
+  requestPushSubscription,
+  toPushSubscriptionPayload,
+  type PushReadiness,
+} from '@/src/lib/push-notifications';
+
+// Platform fallback when a vendor sets no override (kept in sync with backend default).
+const DEFAULT_SERVICE_FEE_KOBO = 20000; // ₦200
 
 function PayoutModal({
   existing,
@@ -133,10 +155,267 @@ function PayoutModal({
   );
 }
 
+function ServiceFeeCard({ profile }: { profile: VendorProfile }) {
+  const queryClient = useQueryClient();
+  const hasOverride = profile.serviceFeeKobo != null;
+  const [useDefault, setUseDefault] = useState(!hasOverride);
+  const [naira, setNaira] = useState(
+    hasOverride ? String((profile.serviceFeeKobo as number) / 100) : ''
+  );
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    const override = profile.serviceFeeKobo != null;
+    setUseDefault(!override);
+    setNaira(override ? String((profile.serviceFeeKobo as number) / 100) : '');
+  }, [profile.serviceFeeKobo]);
+
+  const parsedKobo = useDefault ? null : Math.round((Number(naira) || 0) * 100);
+  const inputInvalid = !useDefault && (naira.trim() === '' || Number(naira) < 0 || Number.isNaN(Number(naira)));
+
+  const save = useMutation({
+    mutationFn: () => profileApi.update({ serviceFeeKobo: parsedKobo }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: qk.profile() });
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2500);
+    },
+  });
+
+  return (
+    <TonalCard>
+      <div className="flex items-start gap-4 mb-6">
+        <div className="p-3 bg-gray-100 rounded-xl">
+          <Coins className="w-6 h-6 text-[var(--color-primary)]" />
+        </div>
+        <div>
+          <h2 className="text-lg font-semibold tracking-tight">Takeaway / Packaging Fee</h2>
+          <p className="text-sm text-[var(--color-muted-foreground)]">
+            Charged per order to cover packaging. Leave on the default unless you need your own rate.
+          </p>
+        </div>
+      </div>
+
+      <div className="space-y-4">
+        <label
+          className={`p-4 border rounded-lg flex items-start gap-3 cursor-pointer ${useDefault ? 'border-[var(--color-primary)]/30 bg-[var(--color-info)]/5' : 'border-[var(--color-border)]'}`}
+        >
+          <input
+            type="radio"
+            name="service_fee_mode"
+            checked={useDefault}
+            onChange={() => setUseDefault(true)}
+            className="mt-1 w-4 h-4 text-[var(--color-primary)]"
+          />
+          <div>
+            <span className="text-sm font-semibold text-[var(--color-foreground)]">
+              Use platform default ({formatNaira(DEFAULT_SERVICE_FEE_KOBO)})
+            </span>
+            <p className="text-xs text-[var(--color-muted-foreground)] mt-1">
+              No override — the standard Meal Direct packaging fee applies.
+            </p>
+          </div>
+        </label>
+
+        <label
+          className={`p-4 border rounded-lg flex items-start gap-3 cursor-pointer ${!useDefault ? 'border-[var(--color-primary)]/30 bg-[var(--color-info)]/5' : 'border-[var(--color-border)]'}`}
+        >
+          <input
+            type="radio"
+            name="service_fee_mode"
+            checked={!useDefault}
+            onChange={() => setUseDefault(false)}
+            className="mt-1 w-4 h-4 text-[var(--color-primary)]"
+          />
+          <div className="flex-1">
+            <span className="text-sm font-semibold text-[var(--color-foreground)]">Set my own fee</span>
+            <p className="text-xs text-[var(--color-muted-foreground)] mt-1 mb-3">
+              Your campus sets a maximum; if you exceed it the save is rejected with the limit.
+            </p>
+            <div className="relative max-w-[180px]">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-[var(--color-muted-foreground)]">
+                ₦
+              </span>
+              <input
+                type="number"
+                min={0}
+                step="1"
+                inputMode="numeric"
+                value={naira}
+                disabled={useDefault}
+                onFocus={() => setUseDefault(false)}
+                onChange={(e) => setNaira(e.target.value)}
+                placeholder="150"
+                className="w-full pl-7 pr-3 py-2 border border-[var(--color-border)] rounded-md text-sm tabular-nums focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]/20 disabled:opacity-50 disabled:bg-gray-50"
+              />
+            </div>
+          </div>
+        </label>
+
+        {save.isError && (
+          <div className="flex items-start gap-2 rounded-lg border border-[var(--color-error)]/20 bg-[var(--color-error)]/10 p-3 text-sm text-[var(--color-error)]">
+            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+            <span>{(save.error as Error).message}</span>
+          </div>
+        )}
+
+        <div className="flex justify-end pt-2">
+          <button
+            onClick={() => save.mutate()}
+            disabled={save.isPending || inputInvalid}
+            className="px-4 py-2 bg-[var(--color-primary)] text-white text-sm font-medium rounded-lg hover:bg-[var(--color-primary)]/90 transition-colors flex items-center gap-2 disabled:opacity-50"
+          >
+            {saved && <Check className="w-4 h-4" />}
+            {save.isPending ? 'Saving…' : saved ? 'Saved' : 'Save Fee'}
+          </button>
+        </div>
+      </div>
+    </TonalCard>
+  );
+}
+
+const PUSH_STATUS_COPY: Record<PushReadiness['reason'], string> = {
+  ready: 'Ready on this device',
+  feature_disabled: 'Unavailable in this environment',
+  missing_vapid_key: 'Waiting for push configuration',
+  unsupported_browser: 'Not supported by this browser',
+  permission_denied: 'Blocked by browser permission',
+};
+
+function PushNotificationsCard() {
+  const [readiness, setReadiness] = useState<PushReadiness>({
+    ready: false,
+    reason: 'unsupported_browser',
+  });
+  const [enabledOnDevice, setEnabledOnDevice] = useState(false);
+  const [checking, setChecking] = useState(true);
+  const [message, setMessage] = useState<string | null>(null);
+
+  const refresh = async () => {
+    const nextReadiness = getBrowserPushReadiness();
+    setReadiness(nextReadiness);
+    const subscription = nextReadiness.ready
+      ? await getCurrentPushSubscription().catch(() => null)
+      : null;
+    setEnabledOnDevice(Boolean(subscription));
+    setChecking(false);
+  };
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      refresh();
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, []);
+
+  const enable = useMutation({
+    mutationFn: async () => {
+      setMessage(null);
+      const subscription = await requestPushSubscription();
+      await notificationsApi.registerPushSubscription({
+        ...toPushSubscriptionPayload(subscription),
+        userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : undefined,
+      });
+    },
+    onSuccess: () => {
+      setMessage('Push notifications enabled for this device.');
+      refresh();
+    },
+    onError: (error) => {
+      setMessage((error as Error).message);
+      refresh();
+    },
+  });
+
+  const disable = useMutation({
+    mutationFn: async () => {
+      setMessage(null);
+      const subscription = await getCurrentPushSubscription();
+      if (!subscription) return;
+      const endpoint = subscription.endpoint;
+      if (subscription.unsubscribe) await subscription.unsubscribe();
+      await notificationsApi.deletePushSubscription(endpoint);
+    },
+    onSuccess: () => {
+      setMessage('Push notifications disabled for this device.');
+      refresh();
+    },
+    onError: (error) => {
+      setMessage((error as Error).message);
+      refresh();
+    },
+  });
+
+  const busy = checking || enable.isPending || disable.isPending;
+  const canEnable = readiness.ready && !enabledOnDevice && !busy;
+  const canDisable = readiness.ready && enabledOnDevice && !busy;
+
+  return (
+    <TonalCard>
+      <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex items-start gap-4">
+          <div className="rounded-xl bg-gray-100 p-3">
+            <BellRing className="h-6 w-6 text-[var(--color-primary)]" />
+          </div>
+          <div>
+            <h2 className="text-lg font-semibold tracking-tight">Push Notifications</h2>
+            <p className="text-sm text-[var(--color-muted-foreground)]">
+              New orders and urgent vendor alerts on this device.
+            </p>
+          </div>
+        </div>
+
+        <div className="flex flex-col items-stretch gap-2 sm:items-end">
+          <span
+            className={`inline-flex items-center justify-center rounded-md px-2.5 py-1 text-xs font-medium ${
+              enabledOnDevice
+                ? 'bg-[var(--color-success)]/10 text-[var(--color-success)]'
+                : readiness.ready
+                  ? 'bg-[var(--color-info)]/10 text-[var(--color-info)]'
+                  : 'bg-gray-100 text-[var(--color-muted-foreground)]'
+            }`}
+          >
+            {checking ? 'Checking device' : enabledOnDevice ? 'Enabled' : PUSH_STATUS_COPY[readiness.reason]}
+          </span>
+
+          {enabledOnDevice ? (
+            <button
+              type="button"
+              onClick={() => disable.mutate()}
+              disabled={!canDisable}
+              className="inline-flex min-w-[150px] items-center justify-center gap-2 rounded-lg border border-[var(--color-border)] px-4 py-2 text-sm font-medium text-[var(--color-foreground)] transition-colors hover:bg-gray-50 disabled:opacity-50"
+            >
+              {busy && <Loader2 className="h-4 w-4 animate-spin" />}
+              Disable
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => enable.mutate()}
+              disabled={!canEnable}
+              className="inline-flex min-w-[150px] items-center justify-center gap-2 rounded-lg bg-[var(--color-primary)] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[var(--color-primary)]/90 disabled:opacity-50"
+            >
+              {busy && <Loader2 className="h-4 w-4 animate-spin" />}
+              Enable
+            </button>
+          )}
+        </div>
+      </div>
+
+      {message && (
+        <div className="mt-4 rounded-lg border border-[var(--color-border)] bg-gray-50 px-3 py-2 text-sm text-[var(--color-muted-foreground)]">
+          {message}
+        </div>
+      )}
+    </TonalCard>
+  );
+}
+
 export default function SettingsPage() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const clearSession = useAuthStore((s) => s.clearSession);
+  const { isApproved } = useVendorApproval();
   const [signingOut, setSigningOut] = useState(false);
   const [editingPayout, setEditingPayout] = useState(false);
 
@@ -314,6 +593,10 @@ export default function SettingsPage() {
           </div>
         </TonalCard>
 
+        {profileQ.data && <ServiceFeeCard profile={profileQ.data} />}
+
+        <PushNotificationsCard />
+
         <TonalCard>
           <div className="flex items-start justify-between gap-4 mb-4">
             <div className="flex items-start gap-4">
@@ -327,8 +610,9 @@ export default function SettingsPage() {
             </div>
             <button
               onClick={() => setEditingPayout(true)}
-              disabled={payoutQ.isLoading}
-              className="shrink-0 inline-flex items-center gap-1.5 px-3 py-2 border border-[var(--color-border)] rounded-lg text-sm font-medium text-[var(--color-foreground)] hover:bg-gray-50 transition-colors disabled:opacity-50"
+              disabled={payoutQ.isLoading || !isApproved}
+              title={!isApproved ? 'Available once your vendor account is approved' : undefined}
+              className="shrink-0 inline-flex items-center gap-1.5 px-3 py-2 border border-[var(--color-border)] rounded-lg text-sm font-medium text-[var(--color-foreground)] hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <CreditCard className="w-4 h-4" />
               {payoutQ.data ? 'Edit' : 'Add account'}

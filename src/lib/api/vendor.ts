@@ -1,5 +1,6 @@
 import { fetchApi } from './client';
 import type {
+  AcceptInviteBody,
   AuthTokens,
   Campus,
   VendorOnboardBody,
@@ -17,6 +18,7 @@ import type {
   NotificationRecord,
   OrderDetail,
   OrderSummary,
+  PushSubscriptionBody,
   SettlementSummary,
   UpdateInventoryBody,
   UpdateMenuItemBody,
@@ -82,6 +84,17 @@ export const authApi = {
       auth: false,
       body: JSON.stringify({ email, password, redirectTo: AUTH_REDIRECT_URL }),
     }),
+  /**
+   * Send a password-reset email. The backend (which brokers Supabase) emails a
+   * recovery link that lands on /auth/callback. Body is `{email}` only — the
+   * endpoint whitelists strictly, so no `redirectTo` here (per-role default used).
+   */
+  requestPasswordReset: (email: string) =>
+    fetchApi<unknown>('/auth/password-reset', {
+      method: 'POST',
+      auth: false,
+      body: JSON.stringify({ email }),
+    }),
   /** Exchange a refresh token for fresh tokens (e.g. after onboarding to pick up vendor_id). */
   refresh: (refreshToken: string) =>
     fetchApi<AuthTokens>('/auth/refresh', {
@@ -91,6 +104,13 @@ export const authApi = {
     }),
   logout: () => fetchApi<unknown>('/auth/logout', { method: 'POST' }).catch(() => null),
   me: () => fetchApi<unknown>('/auth/me'),
+  /** Admin-invited vendor sets a password and links their account in one step. */
+  acceptInvite: (body: AcceptInviteBody) =>
+    fetchApi<AuthTokens>('/auth/vendor/accept-invite', {
+      method: 'POST',
+      auth: false,
+      body: JSON.stringify(body),
+    }),
 };
 
 // --- Public campus directory (no auth) ---
@@ -230,6 +250,16 @@ export const notificationsApi = {
   markRead: (id: string) =>
     fetchApi<unknown>(`/notifications/${id}/read`, { method: 'POST' }),
   markAllRead: () => fetchApi<unknown>('/notifications/read-all', { method: 'POST' }),
+  registerPushSubscription: (body: PushSubscriptionBody) =>
+    fetchApi<unknown>('/notifications/push-subscriptions', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  deletePushSubscription: (endpoint: string) =>
+    fetchApi<unknown>('/notifications/push-subscriptions', {
+      method: 'DELETE',
+      body: JSON.stringify({ endpoint }),
+    }),
 };
 
 // --- Profile ---
