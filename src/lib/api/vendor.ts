@@ -9,7 +9,9 @@ import type {
   BatchDetail,
   BatchSummary,
   CreateAdjustmentBody,
+  CreateMenuCategoryBody,
   CreateMenuItemBody,
+  MenuCategory,
   DeliverySlot,
   ItemEnvelope,
   ListEnvelope,
@@ -178,6 +180,11 @@ export const menuApi = {
   list: () => fetchApi<VendorMenuItem[]>('/vendor/menu-items'),
   get: (id: string) => fetchApi<VendorMenuItem>(`/vendor/menu-items/${id}`),
   metadata: () => fetchApi<MenuMetadata>('/vendor/menu-metadata'),
+  createCategory: (body: CreateMenuCategoryBody) =>
+    fetchApi<MenuCategory>('/vendor/menu-categories', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
   create: (body: CreateMenuItemBody) =>
     fetchApi<VendorMenuItem>('/vendor/menu-items', { method: 'POST', body: JSON.stringify(body) }),
   update: (id: string, body: UpdateMenuItemBody) =>

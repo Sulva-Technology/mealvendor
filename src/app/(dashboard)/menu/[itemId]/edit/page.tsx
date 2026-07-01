@@ -62,9 +62,12 @@ export default function EditMenuItemPage({ params }: { params: Promise<{ itemId:
     unitTypeId: '',
     categoryId: '',
     priceNaira: '',
-    displayOrder: '0',
   });
   const [saved, setSaved] = useState(false);
+
+  // Inline "+ New category" control state.
+  const [showNewCat, setShowNewCat] = useState(false);
+  const [newCatName, setNewCatName] = useState('');
 
   // Hydrate the form once the item loads (edit mode).
   useEffect(() => {
@@ -76,7 +79,6 @@ export default function EditMenuItemPage({ params }: { params: Promise<{ itemId:
         unitTypeId: it.unitTypeId,
         categoryId: it.categoryId ?? '',
         priceNaira: String(it.priceKobo / 100),
-        displayOrder: String(it.displayOrder ?? 0),
       });
     }
   }, [itemQ.data]);
@@ -96,7 +98,6 @@ export default function EditMenuItemPage({ params }: { params: Promise<{ itemId:
         unitTypeId: form.unitTypeId,
         categoryId: form.categoryId || undefined,
         priceKobo: Math.round(Number(form.priceNaira) * 100),
-        displayOrder: Number(form.displayOrder) || 0,
       };
       return isNew ? menuApi.create(body) : menuApi.update(itemId, body);
     },
@@ -109,6 +110,17 @@ export default function EditMenuItemPage({ params }: { params: Promise<{ itemId:
         setSaved(true);
         setTimeout(() => setSaved(false), 2500);
       }
+    },
+  });
+
+  // Create a new per-vendor category, refresh metadata, then auto-select it.
+  const createCat = useMutation({
+    mutationFn: () => menuApi.createCategory({ name: newCatName.trim() }),
+    onSuccess: async (cat) => {
+      await queryClient.invalidateQueries({ queryKey: qk.menuMetadata() });
+      setForm((f) => ({ ...f, categoryId: cat.id }));
+      setNewCatName('');
+      setShowNewCat(false);
     },
   });
 
@@ -256,32 +268,80 @@ export default function EditMenuItemPage({ params }: { params: Promise<{ itemId:
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
                   <label className="text-sm font-medium text-[var(--color-foreground)]">Category</label>
-                  <select
-                    value={form.categoryId}
-                    onChange={(e) => setForm((f) => ({ ...f, categoryId: e.target.value }))}
-                    className="w-full px-3 py-2 bg-white border border-[var(--color-border)] rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]/20"
-                  >
-                    <option value="">Uncategorized</option>
-                    {metaQ.data?.categories.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name}
-                      </option>
-                    ))}
-                  </select>
+                  {!showNewCat && (
+                    <button
+                      type="button"
+                      onClick={() => setShowNewCat(true)}
+                      disabled={!isApproved}
+                      title={!isApproved ? lockTitle : undefined}
+                      className="text-sm font-medium text-[var(--color-primary)] hover:underline disabled:opacity-50 disabled:no-underline disabled:cursor-not-allowed"
+                    >
+                      + New category
+                    </button>
+                  )}
                 </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-[var(--color-foreground)]">Display Order</label>
-                  <input
-                    type="number"
-                    min="0"
-                    value={form.displayOrder}
-                    onChange={(e) => setForm((f) => ({ ...f, displayOrder: e.target.value }))}
-                    className="w-full px-3 py-2 bg-white border border-[var(--color-border)] rounded-md text-sm tabular-nums focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]/20"
-                  />
-                </div>
+                <select
+                  value={form.categoryId}
+                  onChange={(e) => setForm((f) => ({ ...f, categoryId: e.target.value }))}
+                  className="w-full px-3 py-2 bg-white border border-[var(--color-border)] rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]/20"
+                >
+                  <option value="">Uncategorized</option>
+                  {metaQ.data?.categories.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+
+                {showNewCat && (
+                  <div className="space-y-2 rounded-lg border border-[var(--color-border)] bg-gray-50 p-3">
+                    <div className="flex items-center gap-2">
+                      <input
+                        autoFocus
+                        type="text"
+                        value={newCatName}
+                        placeholder="New category name"
+                        onChange={(e) => setNewCatName(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            if (newCatName.trim() && !createCat.isPending) createCat.mutate();
+                          }
+                        }}
+                        className="flex-1 px-3 py-2 bg-white border border-[var(--color-border)] rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]/20"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => createCat.mutate()}
+                        disabled={createCat.isPending || !newCatName.trim() || !isApproved}
+                        title={!isApproved ? lockTitle : undefined}
+                        className="px-3 py-2 bg-[var(--color-primary)] text-white rounded-md text-sm font-medium hover:bg-[var(--color-primary)]/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {createCat.isPending ? 'Adding…' : 'Add'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowNewCat(false);
+                          setNewCatName('');
+                          createCat.reset();
+                        }}
+                        className="px-3 py-2 border border-[var(--color-border)] rounded-md text-sm font-medium text-[var(--color-foreground)] hover:bg-gray-100 transition-colors"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                    {createCat.isError && (
+                      <p className="flex items-start gap-1.5 text-xs text-[var(--color-error)]">
+                        <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                        <span>{(createCat.error as Error).message}</span>
+                      </p>
+                    )}
+                  </div>
+                )}
               </div>
             </form>
           </TonalCard>

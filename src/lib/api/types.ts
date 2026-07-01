@@ -136,6 +136,11 @@ export interface CreateMenuItemBody {
 
 export type UpdateMenuItemBody = Partial<CreateMenuItemBody>;
 
+export interface CreateMenuCategoryBody {
+  name: string;
+  displayOrder?: number;
+}
+
 export interface MenuItemSchedule {
   id?: string;
   deliverySlotId: string;
