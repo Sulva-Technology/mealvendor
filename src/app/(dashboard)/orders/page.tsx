@@ -2,19 +2,49 @@
 
 import React, { useState } from 'react';
 import Link from 'next/link';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { TonalCard } from '@/src/components/shared/Cards';
 import { StatusChip } from '@/src/components/shared/StatusChip';
 import { LoadingState, ErrorState, EmptyState } from '@/src/components/shared/QueryStates';
 import { ordersApi, qk } from '@/src/lib/api/vendor';
-import { formatNaira, formatTime, orderStatusChip, orderStatusLabel } from '@/src/lib/format';
-import { Search, Box } from 'lucide-react';
+import type { OrderSummary } from '@/src/lib/api/types';
+import { formatNaira, formatTime, orderStatusChip, orderStatusLabel, orderVendorTotalKobo } from '@/src/lib/format';
+import { Search, Box, Check } from 'lucide-react';
 
 const FILTERS = ['all', 'paid', 'accepted', 'preparing', 'ready', 'delivered'] as const;
+
+// Orders the vendor can still accept — the only status eligible for bulk accept.
+const ACCEPTABLE = new Set(['paid', 'confirmed']);
+
+// The list endpoint returns OrderSummary WITHOUT line items, so each row lazily
+// fetches its own detail (cached by react-query) to show what was ordered.
+function OrderItems({ id, fallback }: { id: string; fallback: string }) {
+  const { data, isLoading, isError } = useQuery({
+    queryKey: qk.order(id),
+    queryFn: () => ordersApi.get(id),
+    staleTime: 30_000,
+  });
+
+  if (isLoading) {
+    return <span className="inline-block h-4 w-32 rounded bg-gray-100 animate-pulse align-middle" />;
+  }
+  if (isError || !data || data.items.length === 0) {
+    return <span className="text-[var(--color-muted-foreground)]">{fallback}</span>;
+  }
+
+  const summary = data.items.map((it) => `${it.quantity}× ${it.itemName}`).join(', ');
+  return (
+    <span className="text-[var(--color-foreground)]" title={summary}>
+      {summary}
+    </span>
+  );
+}
 
 export default function OrdersPage() {
   const [filter, setFilter] = useState<string>('all');
   const [search, setSearch] = useState('');
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const queryClient = useQueryClient();
 
   const query = useQuery({
     queryKey: qk.orders({ status: filter }),
@@ -29,6 +59,32 @@ export default function OrdersPage() {
       o.locationName?.toLowerCase().includes(q) ||
       o.id.toLowerCase().includes(q)
     );
+  });
+
+  const acceptable = orders.filter((o) => ACCEPTABLE.has(o.orderStatus));
+  const selectedAcceptable = acceptable.filter((o) => selected.has(o.id));
+  const allSelected = acceptable.length > 0 && selectedAcceptable.length === acceptable.length;
+
+  const toggleOne = (id: string) =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+
+  const toggleAll = () =>
+    setSelected(() => (allSelected ? new Set() : new Set(acceptable.map((o) => o.id))));
+
+  const acceptSelected = useMutation({
+    mutationFn: async (ids: string[]) => {
+      await Promise.all(ids.map((id) => ordersApi.accept(id)));
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['vendor', 'orders'] });
+      queryClient.invalidateQueries({ queryKey: ['vendor', 'order'] });
+      setSelected(new Set());
+    },
   });
 
   return (
@@ -68,6 +124,36 @@ export default function OrdersPage() {
         ))}
       </div>
 
+      {selectedAcceptable.length > 0 && (
+        <div className="flex items-center justify-between gap-4 rounded-lg border border-[var(--color-primary)]/30 bg-[var(--color-primary)]/5 px-4 py-3">
+          <span className="text-sm font-medium text-[var(--color-foreground)]">
+            {selectedAcceptable.length} order(s) selected
+          </span>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setSelected(new Set())}
+              className="text-sm text-[var(--color-muted-foreground)] hover:underline"
+            >
+              Clear
+            </button>
+            <button
+              onClick={() => acceptSelected.mutate(selectedAcceptable.map((o) => o.id))}
+              disabled={acceptSelected.isPending}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--color-primary)] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[var(--color-primary)]/90 disabled:opacity-60"
+            >
+              <Check className="h-4 w-4" />
+              {acceptSelected.isPending ? 'Accepting…' : `Accept ${selectedAcceptable.length} order(s)`}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {acceptSelected.isError && (
+        <p className="text-sm text-[var(--color-error)]">
+          {(acceptSelected.error as Error).message}
+        </p>
+      )}
+
       <TonalCard className="p-0 overflow-hidden">
         {query.isLoading ? (
           <div className="p-6">
@@ -82,7 +168,17 @@ export default function OrdersPage() {
             <table className="w-full text-sm text-left">
               <thead className="text-xs text-[var(--color-muted-foreground)] uppercase bg-gray-50/50 border-b border-[var(--color-border)]">
                 <tr>
-                  <th className="px-6 py-4 font-medium">Order #</th>
+                  <th className="px-4 py-4 font-medium w-10">
+                    <input
+                      type="checkbox"
+                      checked={allSelected}
+                      onChange={toggleAll}
+                      disabled={acceptable.length === 0}
+                      aria-label="Select all acceptable orders"
+                      className="h-4 w-4 rounded border-[var(--color-border)] accent-[var(--color-primary)] disabled:opacity-40"
+                    />
+                  </th>
+                  <th className="px-6 py-4 font-medium">Order</th>
                   <th className="px-6 py-4 font-medium">Location</th>
                   <th className="px-6 py-4 font-medium">Slot</th>
                   <th className="px-6 py-4 font-medium">Total</th>
@@ -91,33 +187,49 @@ export default function OrdersPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-[var(--color-border)]">
-                {orders.map((order) => (
-                  <tr key={order.id} className="hover:bg-gray-50/50 transition-colors">
-                    <td className="px-6 py-4 font-medium text-[var(--color-foreground)]">
-                      <div className="flex items-center gap-2">
-                        <Box className="h-4 w-4 text-[var(--color-muted-foreground)]" />
-                        {order.orderNumber}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">{order.locationName || '—'}</td>
-                    <td className="px-6 py-4">
-                      <span className="inline-flex items-center gap-1.5 py-1 px-2 rounded-md bg-gray-100 text-gray-800 text-xs font-medium">
-                        {order.deliverySlotName || formatTime(order.createdAt)}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 font-medium text-[var(--color-foreground)] tabular-nums">
-                      {formatNaira(order.totalKobo)}
-                    </td>
-                    <td className="px-6 py-4">
-                      <StatusChip status={orderStatusChip(order.orderStatus)} label={orderStatusLabel(order.orderStatus)} />
-                    </td>
-                    <td className="px-6 py-4">
-                      <Link href={`/orders/${order.id}`} className="text-[var(--color-primary)] font-medium hover:underline text-sm">
-                        Manage
-                      </Link>
-                    </td>
-                  </tr>
-                ))}
+                {orders.map((order: OrderSummary) => {
+                  const canSelect = ACCEPTABLE.has(order.orderStatus);
+                  return (
+                    <tr key={order.id} className="hover:bg-gray-50/50 transition-colors">
+                      <td className="px-4 py-4">
+                        <input
+                          type="checkbox"
+                          checked={selected.has(order.id)}
+                          onChange={() => toggleOne(order.id)}
+                          disabled={!canSelect}
+                          aria-label={`Select order ${order.orderNumber}`}
+                          className="h-4 w-4 rounded border-[var(--color-border)] accent-[var(--color-primary)] disabled:opacity-30"
+                        />
+                      </td>
+                      <td className="px-6 py-4 font-medium text-[var(--color-foreground)]">
+                        <div className="flex items-center gap-2">
+                          <Box className="h-4 w-4 shrink-0 text-[var(--color-muted-foreground)]" />
+                          <div className="min-w-0">
+                            <OrderItems id={order.id} fallback={order.orderNumber} />
+                            <p className="text-xs text-[var(--color-muted-foreground)]">{order.orderNumber}</p>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4">{order.locationName || '—'}</td>
+                      <td className="px-6 py-4">
+                        <span className="inline-flex items-center gap-1.5 py-1 px-2 rounded-md bg-gray-100 text-gray-800 text-xs font-medium">
+                          {order.deliverySlotName || formatTime(order.createdAt)}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 font-medium text-[var(--color-foreground)] tabular-nums">
+                        {formatNaira(orderVendorTotalKobo(order))}
+                      </td>
+                      <td className="px-6 py-4">
+                        <StatusChip status={orderStatusChip(order.orderStatus)} label={orderStatusLabel(order.orderStatus)} />
+                      </td>
+                      <td className="px-6 py-4">
+                        <Link href={`/orders/${order.id}`} className="text-[var(--color-primary)] font-medium hover:underline text-sm">
+                          Manage
+                        </Link>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

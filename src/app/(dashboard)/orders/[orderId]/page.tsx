@@ -8,7 +8,7 @@ import { StatusChip } from '@/src/components/shared/StatusChip';
 import { LoadingState, ErrorState } from '@/src/components/shared/QueryStates';
 import { ordersApi, qk } from '@/src/lib/api/vendor';
 import type { OrderDetail } from '@/src/lib/api/types';
-import { formatNaira, formatDateTime, orderStatusChip, orderStatusLabel } from '@/src/lib/format';
+import { formatNaira, formatDateTime, orderStatusChip, orderStatusLabel, orderVendorTotalKobo } from '@/src/lib/format';
 import { ArrowLeft, MapPin, Clock, Package } from 'lucide-react';
 
 export default function OrderDetailPage({ params }: { params: Promise<{ orderId: string }> }) {
@@ -26,10 +26,9 @@ export default function OrderDetailPage({ params }: { params: Promise<{ orderId:
   };
 
   const acceptM = useMutation({ mutationFn: () => ordersApi.accept(orderId), onSuccess });
-  const prepareM = useMutation({ mutationFn: () => ordersApi.preparing(orderId), onSuccess });
   const readyM = useMutation({ mutationFn: () => ordersApi.ready(orderId), onSuccess });
 
-  const pending = acceptM.isPending || prepareM.isPending || readyM.isPending;
+  const pending = acceptM.isPending || readyM.isPending;
 
   if (query.isLoading) return <LoadingState label="Loading order…" />;
   if (query.isError || !query.data)
@@ -41,13 +40,13 @@ export default function OrderDetailPage({ params }: { params: Promise<{ orderId:
   let action: { label: string; run: () => void } | null = null;
   if (['paid', 'confirmed'].includes(order.orderStatus)) {
     action = { label: 'Accept Order', run: () => acceptM.mutate() };
-  } else if (order.orderStatus === 'accepted') {
-    action = { label: 'Start Preparing', run: () => prepareM.mutate() };
-  } else if (order.orderStatus === 'preparing') {
+  } else if (['accepted', 'preparing'].includes(order.orderStatus)) {
+    // Preparing stage removed from the vendor flow: accepted orders jump
+    // straight to ready. 'preparing' kept only for any legacy in-flight orders.
     action = { label: 'Mark Ready', run: () => readyM.mutate() };
   }
 
-  const mutationError = acceptM.error || prepareM.error || readyM.error;
+  const mutationError = acceptM.error || readyM.error;
 
   return (
     <div className="space-y-6 max-w-5xl mx-auto">
@@ -101,8 +100,8 @@ export default function OrderDetailPage({ params }: { params: Promise<{ orderId:
                 <span className="tabular-nums">{formatNaira(order.foodSubtotalKobo)}</span>
               </div>
               <div className="flex justify-between text-sm text-[var(--color-muted-foreground)]">
-                <span>Delivery fee</span>
-                <span className="tabular-nums">{formatNaira(order.deliveryFeeKobo)}</span>
+                <span>Delivery fee (not included)</span>
+                <span className="tabular-nums line-through">{formatNaira(order.deliveryFeeKobo)}</span>
               </div>
               {order.discountKobo > 0 && (
                 <div className="flex justify-between text-sm text-[var(--color-success)]">
@@ -111,8 +110,8 @@ export default function OrderDetailPage({ params }: { params: Promise<{ orderId:
                 </div>
               )}
               <div className="flex justify-between items-center font-semibold text-lg pt-2 border-t border-[var(--color-border)]">
-                <span>Total</span>
-                <span className="tabular-nums">{formatNaira(order.totalKobo)}</span>
+                <span>Your total</span>
+                <span className="tabular-nums">{formatNaira(orderVendorTotalKobo(order))}</span>
               </div>
             </div>
           </TonalCard>

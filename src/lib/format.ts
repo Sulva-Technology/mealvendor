@@ -12,6 +12,18 @@ export function formatNaira(kobo: number | null | undefined, opts?: { decimals?:
   );
 }
 
+/**
+ * Amount the vendor is owed for an order — food/takeaway only, EXCLUDING the
+ * delivery fee (which is not the vendor's money). Derived as total minus
+ * delivery fee so it stays correct regardless of how the backend composes total.
+ */
+export function orderVendorTotalKobo(order: {
+  totalKobo: number;
+  deliveryFeeKobo: number;
+}): number {
+  return order.totalKobo - order.deliveryFeeKobo;
+}
+
 function toDate(value: string | Date | null | undefined): Date | null {
   if (!value) return null;
   try {
