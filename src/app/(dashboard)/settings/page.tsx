@@ -313,6 +313,9 @@ function PushNotificationsCard() {
       setMessage(null);
       const token = await requestPushToken();
       await notificationsApi.registerDeviceToken({ token, platform: 'web' });
+      // Token registration alone is not enough: the backend gates sending on
+      // the account-level push_enabled preference (defaults to false).
+      await notificationsApi.updatePreferences({ pushEnabled: true });
     },
     onSuccess: () => {
       setMessage('Push notifications enabled for this device.');

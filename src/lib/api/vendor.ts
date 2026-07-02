@@ -268,6 +268,16 @@ export const notificationsApi = {
     fetchApi<void>(`/me/device-tokens/${encodeURIComponent(token)}`, {
       method: 'DELETE',
     }),
+  /**
+   * Update notification preferences. The backend only sends pushes when
+   * push_enabled is true (defaults to false), so enabling push on a device
+   * must also flip this account-level flag.
+   */
+  updatePreferences: (body: { pushEnabled?: boolean; emailEnabled?: boolean }) =>
+    fetchApi<unknown>('/notifications/preferences', {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    }),
 };
 
 // --- Profile ---
