@@ -8,7 +8,7 @@ import { MetricCard, TonalCard } from '@/src/components/shared/Cards';
 import { StatusChip } from '@/src/components/shared/StatusChip';
 import { LoadingState, ErrorState, EmptyState } from '@/src/components/shared/QueryStates';
 import { ordersApi, settlementsApi, batchesApi, profileApi, qk } from '@/src/lib/api/vendor';
-import { formatNaira, orderStatusChip, orderStatusLabel, todayIso, prettifyEnum } from '@/src/lib/format';
+import { formatNaira, orderStatusChip, orderStatusLabel, todayIso, prettifyEnum, orderVendorTotalKobo } from '@/src/lib/format';
 
 export default function DashboardHome() {
   const today = todayIso();
@@ -24,7 +24,7 @@ export default function DashboardHome() {
 
   const revenue = orders
     .filter((o) => !['cancelled', 'expired', 'refunded', 'pending_payment'].includes(o.orderStatus))
-    .reduce((sum, o) => sum + o.totalKobo, 0);
+    .reduce((sum, o) => sum + orderVendorTotalKobo(o), 0);
   const pendingPrep = orders.filter((o) => ['paid', 'accepted', 'confirmed'].includes(o.orderStatus)).length;
   const pendingSettlements = settlements
     .filter((s) => s.status === 'draft' || s.status === 'approved')
@@ -109,7 +109,7 @@ export default function DashboardHome() {
                     <p className="text-xs text-[var(--color-muted-foreground)]">{o.locationName}</p>
                   </div>
                   <div className="flex items-center gap-3">
-                    <span className="text-sm font-medium tabular-nums">{formatNaira(o.totalKobo)}</span>
+                    <span className="text-sm font-medium tabular-nums">{formatNaira(orderVendorTotalKobo(o))}</span>
                     <StatusChip status={orderStatusChip(o.orderStatus)} label={orderStatusLabel(o.orderStatus)} />
                   </div>
                 </Link>

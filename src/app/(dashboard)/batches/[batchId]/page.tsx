@@ -8,7 +8,7 @@ import { StatusChip } from '@/src/components/shared/StatusChip';
 import { LoadingState, ErrorState } from '@/src/components/shared/QueryStates';
 import { batchesApi, qk } from '@/src/lib/api/vendor';
 import type { BatchDetail } from '@/src/lib/api/types';
-import { formatNaira, formatDate, formatTime, orderStatusChip, orderStatusLabel, batchStatusChip, prettifyEnum } from '@/src/lib/format';
+import { formatNaira, formatDate, formatTime, orderStatusChip, orderStatusLabel, batchStatusChip, prettifyEnum, orderVendorTotalKobo } from '@/src/lib/format';
 import { ArrowLeft, Truck, CheckCircle, Package, ShoppingBag } from 'lucide-react';
 
 export default function BatchDetailPage({ params }: { params: Promise<{ batchId: string }> }) {
@@ -136,7 +136,7 @@ export default function BatchDetailPage({ params }: { params: Promise<{ batchId:
                         <StatusChip status={orderStatusChip(o.orderStatus)} label={orderStatusLabel(o.orderStatus)} />
                       </div>
                       <p className="text-xs text-[var(--color-muted-foreground)]">
-                        {o.locationName} • {formatNaira(o.totalKobo)}
+                        {o.locationName} • {formatNaira(orderVendorTotalKobo(o))}
                       </p>
                     </div>
                     <Link
