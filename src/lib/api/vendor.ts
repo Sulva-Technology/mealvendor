@@ -20,7 +20,7 @@ import type {
   NotificationRecord,
   OrderDetail,
   OrderSummary,
-  PushSubscriptionBody,
+  DeviceTokenBody,
   SettlementSummary,
   UpdateInventoryBody,
   UpdateMenuItemBody,
@@ -257,15 +257,16 @@ export const notificationsApi = {
   markRead: (id: string) =>
     fetchApi<unknown>(`/notifications/${id}/read`, { method: 'POST' }),
   markAllRead: () => fetchApi<unknown>('/notifications/read-all', { method: 'POST' }),
-  registerPushSubscription: (body: PushSubscriptionBody) =>
-    fetchApi<unknown>('/notifications/push-subscriptions', {
+  /** Register this device's FCM token. Backend responds 204. */
+  registerDeviceToken: (body: DeviceTokenBody) =>
+    fetchApi<void>('/me/device-tokens', {
       method: 'POST',
       body: JSON.stringify(body),
     }),
-  deletePushSubscription: (endpoint: string) =>
-    fetchApi<unknown>('/notifications/push-subscriptions', {
+  /** Unregister an FCM token (e.g. on logout). Backend responds 204. */
+  deleteDeviceToken: (token: string) =>
+    fetchApi<void>(`/me/device-tokens/${encodeURIComponent(token)}`, {
       method: 'DELETE',
-      body: JSON.stringify({ endpoint }),
     }),
 };
 

@@ -282,14 +282,10 @@ export interface NotificationRecord {
   updatedAt: string;
 }
 
-export interface PushSubscriptionBody {
-  endpoint: string;
-  expirationTime?: number | null;
-  keys: {
-    p256dh: string;
-    auth: string;
-  };
-  userAgent?: string;
+export interface DeviceTokenBody {
+  /** FCM registration token for this device. */
+  token: string;
+  platform: 'web';
 }
 
 // --- Profile ---

@@ -19,47 +19,6 @@ export interface PushReadiness {
   reason: PushReadinessReason;
 }
 
-export interface PushSubscriptionPayload {
-  endpoint: string;
-  expirationTime?: number | null;
-  keys: {
-    p256dh: string;
-    auth: string;
-  };
-}
-
-interface PushSubscriptionJson {
-  endpoint?: string;
-  expirationTime?: number | null;
-  keys?: {
-    p256dh?: string;
-    auth?: string;
-  };
-}
-
-export interface PushSubscriptionLike {
-  endpoint: string;
-  expirationTime?: number | null;
-  toJSON(): PushSubscriptionJson;
-  unsubscribe?(): Promise<boolean>;
-}
-
-interface PushManagerLike {
-  getSubscription(): Promise<PushSubscriptionLike | null>;
-  subscribe(options: {
-    userVisibleOnly: boolean;
-    applicationServerKey: Uint8Array<ArrayBuffer>;
-  }): Promise<PushSubscriptionLike>;
-}
-
-interface ServiceWorkerRegistrationLike {
-  pushManager: PushManagerLike;
-}
-
-export interface ServiceWorkerContainerLike {
-  ready: Promise<ServiceWorkerRegistrationLike>;
-}
-
 export interface NotificationLike {
   permission: NotificationPermission;
   requestPermission(): Promise<NotificationPermission>;
@@ -78,20 +37,12 @@ export class PushNotificationError extends Error {
 export const PUSH_NOTIFICATIONS_ENABLED =
   process.env.NEXT_PUBLIC_ENABLE_PUSH_NOTIFICATIONS === 'true';
 
+/**
+ * Firebase Web Push certificate ("VAPID") public key, passed to
+ * `getToken({ vapidKey })`. Configured via env so it can rotate without a code
+ * change.
+ */
 export const VAPID_PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || '';
-
-export function urlBase64ToUint8Array(base64Url: string): Uint8Array<ArrayBuffer> {
-  const padding = '='.repeat((4 - (base64Url.length % 4)) % 4);
-  const base64 = `${base64Url}${padding}`.replace(/-/g, '+').replace(/_/g, '/');
-  const raw = globalThis.atob(base64);
-  const output = new Uint8Array(new ArrayBuffer(raw.length));
-
-  for (let i = 0; i < raw.length; i += 1) {
-    output[i] = raw.charCodeAt(i);
-  }
-
-  return output;
-}
 
 export function getPushReadiness(input: PushReadinessInput): PushReadiness {
   if (!input.enabled) return { ready: false, reason: 'feature_disabled' };
@@ -118,33 +69,35 @@ export function getBrowserPushReadiness(): PushReadiness {
   });
 }
 
-export async function requestPushSubscription({
-  vapidPublicKey = VAPID_PUBLIC_KEY,
-  notification,
-  serviceWorker,
-}: {
-  vapidPublicKey?: string;
-  notification?: NotificationLike;
-  serviceWorker?: ServiceWorkerContainerLike;
-} = {}): Promise<PushSubscriptionLike> {
-  const notificationApi =
-    notification ??
-    (typeof window !== 'undefined' && 'Notification' in window
-      ? (Notification as unknown as NotificationLike)
-      : undefined);
-  const serviceWorkerApi =
-    serviceWorker ??
-    (typeof navigator !== 'undefined' && 'serviceWorker' in navigator
-      ? (navigator.serviceWorker as unknown as ServiceWorkerContainerLike)
-      : undefined);
+function browserNotification(): NotificationLike | undefined {
+  return typeof window !== 'undefined' && 'Notification' in window
+    ? (Notification as unknown as NotificationLike)
+    : undefined;
+}
 
-  if (!notificationApi || !serviceWorkerApi) {
+/**
+ * Request notification permission (if not already decided) and return this
+ * device's FCM registration token. Throws a PushNotificationError with the
+ * matching readiness reason on any failure so callers can surface it.
+ *
+ * Firebase is loaded lazily so this module stays importable in non-browser
+ * (SSR / test) environments.
+ */
+export async function requestPushToken({
+  vapidKey = VAPID_PUBLIC_KEY,
+  notification,
+}: {
+  vapidKey?: string;
+  notification?: NotificationLike;
+} = {}): Promise<string> {
+  const notificationApi = notification ?? browserNotification();
+  if (!notificationApi) {
     throw new PushNotificationError(
       'unsupported_browser',
       'This browser does not support web push notifications.'
     );
   }
-  if (!vapidPublicKey.trim()) {
+  if (!vapidKey.trim()) {
     throw new PushNotificationError(
       'missing_vapid_key',
       'Push notifications are not configured for this app.'
@@ -162,49 +115,44 @@ export async function requestPushSubscription({
     );
   }
 
-  const registration = await serviceWorkerApi.ready;
-  const existing = await registration.pushManager.getSubscription();
-  if (existing) return existing;
-
-  return registration.pushManager.subscribe({
-    userVisibleOnly: true,
-    applicationServerKey: urlBase64ToUint8Array(vapidPublicKey),
-  });
-}
-
-export async function getCurrentPushSubscription(
-  serviceWorker?: ServiceWorkerContainerLike
-): Promise<PushSubscriptionLike | null> {
-  const serviceWorkerApi =
-    serviceWorker ??
-    (typeof navigator !== 'undefined' && 'serviceWorker' in navigator
-      ? (navigator.serviceWorker as unknown as ServiceWorkerContainerLike)
-      : undefined);
-
-  if (!serviceWorkerApi) return null;
-  const registration = await serviceWorkerApi.ready;
-  return registration.pushManager.getSubscription();
-}
-
-export function toPushSubscriptionPayload(
-  subscription: PushSubscriptionLike
-): PushSubscriptionPayload {
-  const json = subscription.toJSON();
-  const endpoint = json.endpoint ?? subscription.endpoint;
-  const expirationTime = json.expirationTime ?? subscription.expirationTime ?? null;
-  const p256dh = json.keys?.p256dh;
-  const auth = json.keys?.auth;
-
-  if (!endpoint || !p256dh || !auth) {
+  const { fetchPushToken } = await import('@/src/config/firebase');
+  const token = await fetchPushToken(vapidKey);
+  if (!token) {
     throw new PushNotificationError(
       'unsupported_browser',
-      'The browser returned an incomplete push subscription.'
+      'Could not obtain a device token for push notifications.'
     );
   }
+  return token;
+}
 
-  return {
-    endpoint,
-    expirationTime,
-    keys: { p256dh, auth },
-  };
+/**
+ * Return the current device's FCM token when permission is already granted,
+ * or null otherwise (never prompts). Used to reflect the enabled/disabled
+ * state and to find the token to unregister.
+ */
+export async function getCurrentPushToken({
+  notification,
+}: {
+  notification?: NotificationLike;
+} = {}): Promise<string | null> {
+  const notificationApi = notification ?? browserNotification();
+  if (!notificationApi || notificationApi.permission !== 'granted') return null;
+
+  try {
+    const { fetchPushToken } = await import('@/src/config/firebase');
+    return await fetchPushToken(VAPID_PUBLIC_KEY);
+  } catch {
+    return null;
+  }
+}
+
+/** Invalidate this device's FCM token locally (best-effort). */
+export async function deletePushToken(): Promise<void> {
+  try {
+    const { revokePushToken } = await import('@/src/config/firebase');
+    await revokePushToken();
+  } catch {
+    // Best-effort: the backend record is removed separately via the API.
+  }
 }

@@ -8,33 +8,28 @@ vi.mock('./client', () => ({
 
 const mockedFetchApi = vi.mocked(fetchApi);
 
-describe('notificationsApi push subscriptions', () => {
+describe('notificationsApi device tokens', () => {
   beforeEach(() => {
     mockedFetchApi.mockReset();
   });
 
-  it('registers the browser push subscription with the notification service', async () => {
-    const body = {
-      endpoint: 'https://push.example/subscription',
-      expirationTime: null,
-      keys: { p256dh: 'p256dh-key', auth: 'auth-key' },
-      userAgent: 'Vitest Browser',
-    };
+  it('registers the FCM device token with the backend', async () => {
+    const body = { token: 'fcm-token-123', platform: 'web' as const };
 
-    await notificationsApi.registerPushSubscription(body);
+    await notificationsApi.registerDeviceToken(body);
 
-    expect(mockedFetchApi).toHaveBeenCalledWith('/notifications/push-subscriptions', {
+    expect(mockedFetchApi).toHaveBeenCalledWith('/me/device-tokens', {
       method: 'POST',
       body: JSON.stringify(body),
     });
   });
 
-  it('removes a browser push subscription by endpoint', async () => {
-    await notificationsApi.deletePushSubscription('https://push.example/subscription');
+  it('unregisters a device token by encoding it into the path', async () => {
+    await notificationsApi.deleteDeviceToken('fcm/token:with+chars');
 
-    expect(mockedFetchApi).toHaveBeenCalledWith('/notifications/push-subscriptions', {
-      method: 'DELETE',
-      body: JSON.stringify({ endpoint: 'https://push.example/subscription' }),
-    });
+    expect(mockedFetchApi).toHaveBeenCalledWith(
+      '/me/device-tokens/fcm%2Ftoken%3Awith%2Bchars',
+      { method: 'DELETE' }
+    );
   });
 });

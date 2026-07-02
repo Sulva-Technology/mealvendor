@@ -24,9 +24,9 @@ import {
 } from 'lucide-react';
 import {
   getBrowserPushReadiness,
-  getCurrentPushSubscription,
-  requestPushSubscription,
-  toPushSubscriptionPayload,
+  getCurrentPushToken,
+  requestPushToken,
+  deletePushToken,
   type PushReadiness,
 } from '@/src/lib/push-notifications';
 
@@ -294,10 +294,10 @@ function PushNotificationsCard() {
   const refresh = async () => {
     const nextReadiness = getBrowserPushReadiness();
     setReadiness(nextReadiness);
-    const subscription = nextReadiness.ready
-      ? await getCurrentPushSubscription().catch(() => null)
+    const token = nextReadiness.ready
+      ? await getCurrentPushToken().catch(() => null)
       : null;
-    setEnabledOnDevice(Boolean(subscription));
+    setEnabledOnDevice(Boolean(token));
     setChecking(false);
   };
 
@@ -311,11 +311,8 @@ function PushNotificationsCard() {
   const enable = useMutation({
     mutationFn: async () => {
       setMessage(null);
-      const subscription = await requestPushSubscription();
-      await notificationsApi.registerPushSubscription({
-        ...toPushSubscriptionPayload(subscription),
-        userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : undefined,
-      });
+      const token = await requestPushToken();
+      await notificationsApi.registerDeviceToken({ token, platform: 'web' });
     },
     onSuccess: () => {
       setMessage('Push notifications enabled for this device.');
@@ -330,11 +327,10 @@ function PushNotificationsCard() {
   const disable = useMutation({
     mutationFn: async () => {
       setMessage(null);
-      const subscription = await getCurrentPushSubscription();
-      if (!subscription) return;
-      const endpoint = subscription.endpoint;
-      if (subscription.unsubscribe) await subscription.unsubscribe();
-      await notificationsApi.deletePushSubscription(endpoint);
+      const token = await getCurrentPushToken();
+      if (!token) return;
+      await notificationsApi.deleteDeviceToken(token);
+      await deletePushToken();
     },
     onSuccess: () => {
       setMessage('Push notifications disabled for this device.');
@@ -459,6 +455,17 @@ export default function SettingsPage() {
 
   const handleSignOut = async () => {
     setSigningOut(true);
+    // Unregister this device's push token while the session (Supabase JWT) is
+    // still valid, so the backend stops pushing to a signed-out device.
+    try {
+      const token = await getCurrentPushToken();
+      if (token) {
+        await notificationsApi.deleteDeviceToken(token).catch(() => {});
+        await deletePushToken();
+      }
+    } catch {
+      // Best-effort — never block sign-out on push cleanup.
+    }
     await authApi.logout();
     clearSession();
     queryClient.clear();

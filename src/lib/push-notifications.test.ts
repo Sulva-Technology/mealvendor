@@ -1,17 +1,20 @@
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  getCurrentPushToken,
   getPushReadiness,
-  requestPushSubscription,
-  toPushSubscriptionPayload,
-  urlBase64ToUint8Array,
+  PushNotificationError,
+  requestPushToken,
 } from './push-notifications';
 
-describe('urlBase64ToUint8Array', () => {
-  it('decodes VAPID public keys from base64url into bytes', () => {
-    expect(Array.from(urlBase64ToUint8Array('SGVsbG8td29ybGQ'))).toEqual(
-      Array.from(new TextEncoder().encode('Hello-world'))
-    );
-  });
+const { fetchPushToken } = vi.hoisted(() => ({ fetchPushToken: vi.fn() }));
+
+vi.mock('@/src/config/firebase', () => ({
+  fetchPushToken,
+  revokePushToken: vi.fn(),
+}));
+
+beforeEach(() => {
+  fetchPushToken.mockReset();
 });
 
 describe('getPushReadiness', () => {
@@ -77,89 +80,73 @@ describe('getPushReadiness', () => {
   });
 });
 
-describe('requestPushSubscription', () => {
-  it('requests permission and creates a user-visible subscription with the VAPID key', async () => {
-    const subscribe = vi.fn().mockResolvedValue({
-      endpoint: 'https://push.example/subscription',
-      expirationTime: null,
-      toJSON: () => ({
-        endpoint: 'https://push.example/subscription',
-        keys: { p256dh: 'p256dh-key', auth: 'auth-key' },
-      }),
+describe('requestPushToken', () => {
+  it('requests permission and returns the FCM token', async () => {
+    fetchPushToken.mockResolvedValue('fcm-device-token');
+    const requestPermission = vi.fn().mockResolvedValue('granted');
+
+    const token = await requestPushToken({
+      vapidKey: 'vapid-key',
+      notification: { permission: 'default', requestPermission },
     });
 
-    const subscription = await requestPushSubscription({
-      vapidPublicKey: 'SGVsbG8td29ybGQ',
-      notification: {
-        permission: 'default',
-        requestPermission: vi.fn().mockResolvedValue('granted'),
-      },
-      serviceWorker: {
-        ready: Promise.resolve({
-          pushManager: {
-            getSubscription: vi.fn().mockResolvedValue(null),
-            subscribe,
-          },
-        }),
-      },
-    });
-
-    expect(subscription.endpoint).toBe('https://push.example/subscription');
-    expect(subscribe).toHaveBeenCalledWith({
-      userVisibleOnly: true,
-      applicationServerKey: urlBase64ToUint8Array('SGVsbG8td29ybGQ'),
-    });
+    expect(requestPermission).toHaveBeenCalledOnce();
+    expect(fetchPushToken).toHaveBeenCalledWith('vapid-key');
+    expect(token).toBe('fcm-device-token');
   });
 
-  it('reuses an existing browser subscription instead of creating another one', async () => {
-    const existing = {
-      endpoint: 'https://push.example/existing',
-      expirationTime: null,
-      toJSON: () => ({
-        endpoint: 'https://push.example/existing',
-        keys: { p256dh: 'existing-p256dh', auth: 'existing-auth' },
-      }),
-    };
-    const subscribe = vi.fn();
+  it('does not re-prompt when permission is already granted', async () => {
+    fetchPushToken.mockResolvedValue('fcm-device-token');
+    const requestPermission = vi.fn();
+
+    await requestPushToken({
+      vapidKey: 'vapid-key',
+      notification: { permission: 'granted', requestPermission },
+    });
+
+    expect(requestPermission).not.toHaveBeenCalled();
+  });
+
+  it('throws permission_denied when the user declines', async () => {
+    const requestPermission = vi.fn().mockResolvedValue('denied');
 
     await expect(
-      requestPushSubscription({
-        vapidPublicKey: 'SGVsbG8td29ybGQ',
-        notification: {
-          permission: 'granted',
-          requestPermission: vi.fn(),
-        },
-        serviceWorker: {
-          ready: Promise.resolve({
-            pushManager: {
-              getSubscription: vi.fn().mockResolvedValue(existing),
-              subscribe,
-            },
-          }),
-        },
+      requestPushToken({
+        vapidKey: 'vapid-key',
+        notification: { permission: 'default', requestPermission },
       })
-    ).resolves.toBe(existing);
+    ).rejects.toMatchObject({ reason: 'permission_denied' } as Partial<PushNotificationError>);
 
-    expect(subscribe).not.toHaveBeenCalled();
+    expect(fetchPushToken).not.toHaveBeenCalled();
+  });
+
+  it('throws missing_vapid_key when no key is configured', async () => {
+    await expect(
+      requestPushToken({
+        vapidKey: '',
+        notification: { permission: 'granted', requestPermission: vi.fn() },
+      })
+    ).rejects.toMatchObject({ reason: 'missing_vapid_key' } as Partial<PushNotificationError>);
   });
 });
 
-describe('toPushSubscriptionPayload', () => {
-  it('normalizes the browser subscription into the backend payload shape', () => {
-    const payload = toPushSubscriptionPayload({
-      endpoint: 'https://push.example/subscription',
-      expirationTime: 123,
-      toJSON: () => ({
-        endpoint: 'https://push.example/subscription',
-        expirationTime: 123,
-        keys: { p256dh: 'p256dh-key', auth: 'auth-key' },
-      }),
+describe('getCurrentPushToken', () => {
+  it('returns null without prompting when permission is not granted', async () => {
+    const token = await getCurrentPushToken({
+      notification: { permission: 'default', requestPermission: vi.fn() },
     });
 
-    expect(payload).toEqual({
-      endpoint: 'https://push.example/subscription',
-      expirationTime: 123,
-      keys: { p256dh: 'p256dh-key', auth: 'auth-key' },
+    expect(token).toBeNull();
+    expect(fetchPushToken).not.toHaveBeenCalled();
+  });
+
+  it('returns the existing token when permission is granted', async () => {
+    fetchPushToken.mockResolvedValue('existing-token');
+
+    const token = await getCurrentPushToken({
+      notification: { permission: 'granted', requestPermission: vi.fn() },
     });
+
+    expect(token).toBe('existing-token');
   });
 });
