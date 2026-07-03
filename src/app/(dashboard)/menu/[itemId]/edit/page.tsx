@@ -221,14 +221,27 @@ export default function EditMenuItemPage({ params }: { params: Promise<{ itemId:
         categoryId: form.categoryId || undefined,
         priceKobo: Math.round(Number(form.priceNaira) * 100),
       };
+      if (!isNew) {
+        // Preserve the current imageUrl so the backend doesn't clear it
+        // when the PATCH body omits the field.
+        const currentImage = itemQ.data?.imageUrl;
+        if (currentImage) {
+          body.imageUrl = currentImage;
+        }
+      }
       return isNew ? menuApi.create(body) : menuApi.update(itemId, body);
     },
     onSuccess: (item) => {
-      queryClient.invalidateQueries({ queryKey: qk.menuItems() });
+      // Use the response to update both caches directly so the imageUrl
+      // (a short-lived signed URL) is never lost between invalidation
+      // and refetch.
+      queryClient.setQueryData(qk.menuItem(item.id), item);
+      queryClient.setQueryData(qk.menuItems(), (old: VendorMenuItem[] | undefined) =>
+        old?.map((existing) => (existing.id === item.id ? item : existing))
+      );
       if (isNew) {
         router.replace(`/menu/${item.id}/edit`);
       } else {
-        queryClient.invalidateQueries({ queryKey: qk.menuItem(itemId) });
         setSaved(true);
         setTimeout(() => setSaved(false), 2500);
       }
