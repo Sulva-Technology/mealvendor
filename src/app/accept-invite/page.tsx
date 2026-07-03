@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { AlertCircle, Loader2 } from 'lucide-react';
+import { AlertCircle, Loader2, MailCheck } from 'lucide-react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -36,6 +36,7 @@ export default function AcceptInvitePage() {
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [confirmSent, setConfirmSent] = useState(false);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -68,7 +69,12 @@ export default function AcceptInvitePage() {
         fullName: fullName.trim() || undefined,
       });
       if (!tokens?.accessToken) {
-        throw new Error('No access token returned by the server.');
+        // Account was created and a confirmation email was sent — the backend
+        // doesn't issue a session until the vendor confirms. Show a
+        // check-your-email state instead of treating this as an error.
+        setConfirmSent(true);
+        setSubmitting(false);
+        return;
       }
       setSession(tokens);
       router.replace('/');
@@ -116,6 +122,42 @@ export default function AcceptInvitePage() {
             className="inline-flex w-full justify-center py-2.5 px-4 rounded-lg shadow-sm text-sm font-medium text-white bg-[var(--color-primary)] hover:bg-[var(--color-primary)]/90 transition-all"
           >
             Contact admin
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
+  if (confirmSent) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[var(--color-background)] p-4">
+        <div className="w-full max-w-sm space-y-6 glass p-8 rounded-[var(--radius-xl)] shadow-lg text-center">
+          <Image
+            src="/logo.png"
+            alt="Meal Direct"
+            width={64}
+            height={64}
+            priority
+            className="mx-auto h-16 w-16 rounded-3xl shadow-sm"
+          />
+          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-[var(--color-primary)]/10">
+            <MailCheck className="h-7 w-7 text-[var(--color-primary)]" />
+          </div>
+          <div className="space-y-2">
+            <h2 className="text-2xl font-bold tracking-tight text-[var(--color-foreground)]">
+              Check your email
+            </h2>
+            <p className="text-sm text-[var(--color-muted-foreground)]">
+              Your account is set up. We&apos;ve sent a confirmation link to{' '}
+              <span className="font-medium text-[var(--color-foreground)]">{email}</span>. Click it
+              to verify your email, then sign in.
+            </p>
+          </div>
+          <Link
+            href="/login"
+            className="inline-flex w-full justify-center py-2.5 px-4 rounded-lg shadow-sm text-sm font-medium text-white bg-[var(--color-primary)] hover:bg-[var(--color-primary)]/90 transition-all"
+          >
+            Go to sign in
           </Link>
         </div>
       </div>

@@ -11,7 +11,7 @@ import type { OrderSummary } from '@/src/lib/api/types';
 import { formatNaira, formatTime, orderStatusChip, orderStatusLabel, orderVendorTotalKobo } from '@/src/lib/format';
 import { Search, Box, Check } from 'lucide-react';
 
-const FILTERS = ['all', 'paid', 'accepted', 'preparing', 'ready', 'delivered'] as const;
+const FILTERS = ['all', 'paid', 'ready', 'delivered'] as const;
 
 // Orders the vendor can still accept — the only status eligible for bulk accept.
 const ACCEPTABLE = new Set(['paid', 'confirmed']);
