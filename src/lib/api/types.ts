@@ -36,10 +36,14 @@ export type OrderStatus =
   | 'accepted'
   | 'preparing'
   | 'ready'
+  | 'ready_for_pickup'
+  | 'picked_up_by_rider'
   | 'out_for_delivery'
   | 'delivered'
+  | 'completed'
   | 'administratively_completed'
   | 'cancelled'
+  | 'disputed'
   | 'expired'
   | 'refunded';
 
@@ -67,6 +71,15 @@ export interface OrderSummary {
   paidAt?: string | null;
   deliveredAt?: string | null;
   confirmedAt?: string | null;
+  scheduledAt?: string | null;
+  specialNotes?: string | null;
+  riderAssignmentStatus?: string | null;
+  riderName?: string | null;
+  riderContact?: string | null;
+  assignedPickupTime?: string | null;
+  handoffStatus?: string | null;
+  handoffCode?: string | null;
+  riderPickedUpAt?: string | null;
 }
 
 export interface OrderItem {
@@ -97,6 +110,11 @@ export interface VendorMenuItem {
   imageUrl?: string | null;
   priceKobo: number;
   active: boolean;
+  prepTimeMinutes?: number | null;
+  dailyQuantityLimit?: number | null;
+  dietaryTags?: string[] | null;
+  soldOut?: boolean | null;
+  archivedAt?: string | null;
   displayOrder: number;
   createdAt: string;
   updatedAt: string;
@@ -190,6 +208,12 @@ export interface BatchSummary {
   orderCount: number;
   deliveryEarningsKobo: number;
   cutoffAt: string;
+  pickupTime?: string | null;
+  riderAssigned?: boolean | null;
+  riderName?: string | null;
+  handoffStatus?: string | null;
+  handoffCode?: string | null;
+  riderPickedUpAt?: string | null;
   closedAt?: string | null;
   createdAt: string;
   updatedAt: string;
@@ -257,14 +281,35 @@ export interface SettlementSummary {
   status: SettlementStatus;
   grossFoodAmountKobo: number;
   deliveryEarningsKobo: number;
+  commissionKobo?: number | null;
+  serviceFeeKobo?: number | null;
   refundsKobo: number;
   adjustmentsKobo: number;
   payableKobo: number;
+  nextExpectedPayoutDate?: string | null;
+  adminNotes?: string | null;
   paidAt?: string | null;
   externalReference?: string | null;
   lineCount: number;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface SettlementOrderLine {
+  id: string;
+  orderId: string;
+  orderNumber?: string | null;
+  orderDate: string;
+  itemTotalKobo: number;
+  commissionKobo: number;
+  refundsKobo: number;
+  adjustmentsKobo: number;
+  netPayableKobo: number;
+  paymentStatus?: string | null;
+}
+
+export interface SettlementDetail extends SettlementSummary {
+  orders?: SettlementOrderLine[];
 }
 
 // --- Reviews ---
@@ -409,6 +454,49 @@ export interface AvailabilityEntry {
   available: boolean;
   validFrom?: string | null;
   validUntil?: string | null;
+}
+
+export interface StoreAvailabilityState {
+  acceptingOrders: boolean;
+  state: 'open' | 'closed' | 'paused' | 'sold_out_today';
+  pauseUntil?: string | null;
+  cutoffTime?: string | null;
+  maxOrdersPerDay?: number | null;
+  unavailableDates?: string[];
+  updatedAt?: string | null;
+}
+
+export interface UpdateStoreAvailabilityBody {
+  acceptingOrders?: boolean;
+  state?: StoreAvailabilityState['state'];
+  pauseUntil?: string | null;
+  cutoffTime?: string | null;
+  maxOrdersPerDay?: number | null;
+  unavailableDates?: string[];
+}
+
+export interface SupportIssueBody {
+  category:
+    | 'payment_order_mismatch'
+    | 'rider_delay'
+    | 'customer_issue'
+    | 'inventory_problem'
+    | 'wrong_order'
+    | 'settlement_concern'
+    | 'app_issue'
+    | 'other';
+  subjectType: 'order' | 'batch' | 'settlement' | 'inventory' | 'rider_handoff';
+  subjectId: string;
+  message: string;
+}
+
+export interface SupportIssue {
+  id: string;
+  status: 'open' | 'in_progress' | 'resolved' | 'closed';
+  category: SupportIssueBody['category'];
+  subjectType: SupportIssueBody['subjectType'];
+  subjectId: string;
+  createdAt: string;
 }
 
 // --- Campuses (public directory) ---

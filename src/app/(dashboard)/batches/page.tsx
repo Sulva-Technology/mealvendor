@@ -3,12 +3,13 @@
 import React from 'react';
 import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
+import { ChevronRight, Clock, Layers, Package, Truck } from 'lucide-react';
 import { TonalCard } from '@/src/components/shared/Cards';
+import { EmptyState, ErrorState, LoadingState } from '@/src/components/shared/QueryStates';
 import { StatusChip } from '@/src/components/shared/StatusChip';
-import { LoadingState, ErrorState, EmptyState } from '@/src/components/shared/QueryStates';
 import { batchesApi, qk } from '@/src/lib/api/vendor';
-import { formatNaira, formatDate, formatTime, batchStatusChip, prettifyEnum } from '@/src/lib/format';
-import { Clock, ChevronRight, Package, Truck, Layers } from 'lucide-react';
+import { batchStatusChip, formatDate, formatTime, prettifyEnum } from '@/src/lib/format';
+import { batchReadyCounts } from '@/src/lib/vendor-workflow';
 
 export default function BatchesPage() {
   const query = useQuery({ queryKey: qk.batches(), queryFn: batchesApi.list });
@@ -16,75 +17,62 @@ export default function BatchesPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-[var(--color-foreground)]">Order Batches</h1>
-          <p className="text-sm text-[var(--color-muted-foreground)]">Manage orders by operational delivery slots.</p>
-        </div>
+      <div>
+        <h1 className="text-2xl font-semibold tracking-tight text-[var(--color-foreground)]">Order Batches</h1>
+        <p className="text-sm text-[var(--color-muted-foreground)]">Track grouped orders, readiness, pickup time, and rider assignment.</p>
       </div>
 
       {query.isLoading ? (
-        <LoadingState label="Loading batches…" />
+        <LoadingState label="Loading batches..." />
       ) : query.isError ? (
         <ErrorState error={query.error} onRetry={() => query.refetch()} />
       ) : batches.length === 0 ? (
         <EmptyState title="No batches" description="Batches appear once orders are grouped into delivery slots." icon={Layers} />
       ) : (
-        <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-4 lg:grid-cols-2">
           {batches.map((batch) => {
-            const isOpen = batch.status === 'open' || batch.status === 'in_progress';
+            const counts = batchReadyCounts(batch);
+            const active = ['open', 'assigned', 'in_progress'].includes(batch.status);
             return (
-              <TonalCard
-                key={batch.id}
-                className={`p-0 overflow-hidden flex flex-col ${isOpen ? 'border-[var(--color-primary)] ring-1 ring-[var(--color-primary)]/20' : ''}`}
-              >
-                {isOpen && (
-                  <div className="bg-[var(--color-primary)] text-white text-xs font-semibold py-1.5 px-4 flex justify-between items-center">
-                    <span>Active</span>
-                    <span>Cutoff {formatTime(batch.cutoffAt)}</span>
-                  </div>
-                )}
-                <div className="p-5 flex-1">
-                  <div className="flex justify-between items-start mb-4">
-                    <div className="flex items-center gap-2">
-                      <div className="p-2 bg-[var(--color-primary)]/10 rounded-lg">
-                        <Clock className="w-5 h-5 text-[var(--color-primary)]" />
-                      </div>
-                      <div>
-                        <h3 className="text-lg font-bold text-[var(--color-foreground)] tracking-tight">{batch.batchNumber}</h3>
-                        <p className="text-xs text-[var(--color-muted-foreground)]">{formatDate(batch.serviceDate)}</p>
-                      </div>
+              <TonalCard key={batch.id} className={`p-0 overflow-hidden ${active ? 'border-[var(--color-primary)]/40' : ''}`}>
+                <div className="border-b border-[var(--color-border)] bg-gray-50 p-4">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <h3 className="text-lg font-bold tracking-tight text-[var(--color-foreground)]">{batch.batchNumber}</h3>
+                      <p className="text-xs text-[var(--color-muted-foreground)]">Batch ID {batch.id.slice(0, 12)}...</p>
                     </div>
                     <StatusChip status={batchStatusChip(batch.status)} label={prettifyEnum(batch.status)} />
                   </div>
+                </div>
 
-                  <div className="flex gap-4 mb-4">
-                    <div className="flex-1 bg-gray-50 rounded-lg p-3 border border-[var(--color-border)]">
-                      <div className="flex items-center gap-1 text-[var(--color-muted-foreground)] mb-1">
-                        <Package className="w-4 h-4" />
-                        <span className="text-xs font-medium uppercase tracking-wide">Orders</span>
-                      </div>
-                      <span className="text-xl font-semibold tabular-nums text-[var(--color-foreground)]">{batch.orderCount}</span>
-                    </div>
-                    <div className="flex-1 bg-gray-50 rounded-lg p-3 border border-[var(--color-border)]">
-                      <div className="flex items-center gap-1 text-[var(--color-muted-foreground)] mb-1">
-                        <Truck className="w-4 h-4" />
-                        <span className="text-xs font-medium uppercase tracking-wide">Earnings</span>
-                      </div>
-                      <span className="text-sm font-medium text-[var(--color-foreground)] tabular-nums">
-                        {formatNaira(batch.deliveryEarningsKobo)}
-                      </span>
-                    </div>
+                <div className="grid gap-3 p-4 sm:grid-cols-3">
+                  <Metric icon={Package} label="Orders" value={String(batch.orderCount)} />
+                  <Metric icon={Clock} label="Ready / not ready" value={`${counts.ready} / ${counts.notReady}`} />
+                  <Metric icon={Truck} label="Rider" value={batch.riderAssigned || batch.riderName ? batch.riderName || 'Assigned' : 'Not assigned'} />
+                </div>
+
+                <div className="grid gap-3 border-t border-[var(--color-border)] px-4 py-3 text-sm sm:grid-cols-3">
+                  <div>
+                    <p className="text-xs uppercase text-[var(--color-muted-foreground)]">Service date</p>
+                    <p className="font-medium">{formatDate(batch.serviceDate)}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs uppercase text-[var(--color-muted-foreground)]">Pickup time</p>
+                    <p className="font-medium">{batch.pickupTime ? formatTime(batch.pickupTime) : formatTime(batch.cutoffAt)}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs uppercase text-[var(--color-muted-foreground)]">Handoff</p>
+                    <p className="font-medium">{batch.handoffStatus || 'Pending'}</p>
                   </div>
                 </div>
 
                 <div className="border-t border-[var(--color-border)] bg-gray-50 p-3">
                   <Link
                     href={`/batches/${batch.id}`}
-                    className="w-full flex justify-center items-center py-2 text-sm font-medium text-[var(--color-primary)] hover:bg-[var(--color-primary)]/10 rounded-md transition-colors"
+                    className="flex w-full items-center justify-center rounded-md py-2 text-sm font-medium text-[var(--color-primary)] transition-colors hover:bg-[var(--color-primary)]/10"
                   >
-                    View Batch Orders
-                    <ChevronRight className="w-4 h-4 ml-1" />
+                    View batch detail
+                    <ChevronRight className="ml-1 h-4 w-4" />
                   </Link>
                 </div>
               </TonalCard>
@@ -92,6 +80,18 @@ export default function BatchesPage() {
           })}
         </div>
       )}
+    </div>
+  );
+}
+
+function Metric({ icon: Icon, label, value }: { icon: React.ElementType; label: string; value: string }) {
+  return (
+    <div className="rounded-lg border border-[var(--color-border)] bg-white p-3">
+      <div className="mb-1 flex items-center gap-1 text-xs font-medium uppercase tracking-wide text-[var(--color-muted-foreground)]">
+        <Icon className="h-4 w-4" />
+        {label}
+      </div>
+      <p className="font-semibold text-[var(--color-foreground)]">{value}</p>
     </div>
   );
 }

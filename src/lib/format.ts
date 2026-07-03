@@ -69,10 +69,14 @@ const ORDER_STATUS_LABELS: Record<string, string> = {
   accepted: 'Accepted',
   preparing: 'Preparing',
   ready: 'Ready',
+  ready_for_pickup: 'Ready for Pickup',
+  picked_up_by_rider: 'Picked Up by Rider',
   out_for_delivery: 'Out for Delivery',
   delivered: 'Delivered',
+  completed: 'Completed',
   administratively_completed: 'Completed',
   cancelled: 'Cancelled',
+  disputed: 'Disputed',
   expired: 'Expired',
   refunded: 'Refunded',
 };
@@ -87,7 +91,10 @@ export function orderStatusChip(status: string): ChipStatus {
   switch (status) {
     case 'delivered':
     case 'ready':
+    case 'ready_for_pickup':
+    case 'picked_up_by_rider':
     case 'administratively_completed':
+    case 'completed':
       return 'success';
     case 'preparing':
     case 'out_for_delivery':
@@ -98,6 +105,7 @@ export function orderStatusChip(status: string): ChipStatus {
     case 'paid':
       return 'warning';
     case 'cancelled':
+    case 'disputed':
     case 'expired':
     case 'refunded':
       return 'error';

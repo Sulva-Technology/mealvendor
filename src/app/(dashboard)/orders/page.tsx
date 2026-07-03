@@ -2,22 +2,30 @@
 
 import React, { useState } from 'react';
 import Link from 'next/link';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Box, Check, Clock, CreditCard, Search, Truck, UserRound } from 'lucide-react';
 import { TonalCard } from '@/src/components/shared/Cards';
+import { EmptyState, ErrorState, LoadingState } from '@/src/components/shared/QueryStates';
 import { StatusChip } from '@/src/components/shared/StatusChip';
-import { LoadingState, ErrorState, EmptyState } from '@/src/components/shared/QueryStates';
 import { ordersApi, qk } from '@/src/lib/api/vendor';
 import type { OrderSummary } from '@/src/lib/api/types';
 import { formatNaira, formatTime, orderStatusChip, orderStatusLabel, orderVendorTotalKobo } from '@/src/lib/format';
-import { Search, Box, Check } from 'lucide-react';
+import {
+  canRunOrderAction,
+  customerSafeId,
+  nextOrderAction,
+  orderActionLabel,
+  paymentStatusLabel,
+  riderAssignmentLabel,
+  vendorOrderStage,
+  vendorOrderStageLabel,
+} from '@/src/lib/vendor-workflow';
 
-const FILTERS = ['all', 'paid', 'ready', 'delivered'] as const;
-
-// Orders the vendor can still accept — the only status eligible for bulk accept.
+const FILTERS = ['all', 'paid', 'accepted', 'preparing', 'ready', 'out_for_delivery', 'delivered', 'cancelled'] as const;
 const ACCEPTABLE = new Set(['paid', 'confirmed']);
 
-// The list endpoint returns OrderSummary WITHOUT line items, so each row lazily
-// fetches its own detail (cached by react-query) to show what was ordered.
+type NextAction = NonNullable<ReturnType<typeof nextOrderAction>>;
+
 function OrderItems({ id, fallback }: { id: string; fallback: string }) {
   const { data, isLoading, isError } = useQuery({
     queryKey: qk.order(id),
@@ -25,14 +33,12 @@ function OrderItems({ id, fallback }: { id: string; fallback: string }) {
     staleTime: 30_000,
   });
 
-  if (isLoading) {
-    return <span className="inline-block h-4 w-32 rounded bg-gray-100 animate-pulse align-middle" />;
-  }
+  if (isLoading) return <span className="inline-block h-4 w-32 rounded bg-gray-100 align-middle animate-pulse" />;
   if (isError || !data || data.items.length === 0) {
     return <span className="text-[var(--color-muted-foreground)]">{fallback}</span>;
   }
 
-  const summary = data.items.map((it) => `${it.quantity}× ${it.itemName}`).join(', ');
+  const summary = data.items.map((item) => `${item.quantity}x ${item.itemName}`).join(', ');
   return (
     <span className="text-[var(--color-foreground)]" title={summary}>
       {summary}
@@ -51,19 +57,45 @@ export default function OrdersPage() {
     queryFn: () => ordersApi.list(filter === 'all' ? {} : { status: filter }),
   });
 
-  const orders = (query.data ?? []).filter((o) => {
+  const orders = (query.data ?? []).filter((order) => {
     if (!search.trim()) return true;
     const q = search.toLowerCase();
     return (
-      o.orderNumber.toLowerCase().includes(q) ||
-      o.locationName?.toLowerCase().includes(q) ||
-      o.id.toLowerCase().includes(q)
+      order.orderNumber.toLowerCase().includes(q) ||
+      order.locationName?.toLowerCase().includes(q) ||
+      order.id.toLowerCase().includes(q)
     );
   });
 
-  const acceptable = orders.filter((o) => ACCEPTABLE.has(o.orderStatus));
-  const selectedAcceptable = acceptable.filter((o) => selected.has(o.id));
+  const acceptable = orders.filter((order) => ACCEPTABLE.has(order.orderStatus));
+  const selectedAcceptable = acceptable.filter((order) => selected.has(order.id));
   const allSelected = acceptable.length > 0 && selectedAcceptable.length === acceptable.length;
+
+  const invalidateOrders = () => {
+    queryClient.invalidateQueries({ queryKey: ['vendor', 'orders'] });
+    queryClient.invalidateQueries({ queryKey: ['vendor', 'order'] });
+  };
+
+  const acceptSelected = useMutation({
+    mutationFn: async (ids: string[]) => {
+      await Promise.all(ids.map((id) => ordersApi.accept(id)));
+    },
+    onSuccess: () => {
+      invalidateOrders();
+      setSelected(new Set());
+    },
+  });
+
+  const runAction = useMutation({
+    mutationFn: ({ order, action }: { order: OrderSummary; action: NextAction }) => {
+      if (!canRunOrderAction(order, action)) throw new Error('Invalid status transition for this order.');
+      if (action === 'accept') return ordersApi.accept(order.id);
+      if (action === 'prepare') return ordersApi.preparing(order.id);
+      if (action === 'ready') return ordersApi.ready(order.id);
+      return ordersApi.confirmRiderPickup(order.id);
+    },
+    onSuccess: invalidateOrders,
+  });
 
   const toggleOne = (id: string) =>
     setSelected((prev) => {
@@ -73,50 +105,36 @@ export default function OrdersPage() {
       return next;
     });
 
-  const toggleAll = () =>
-    setSelected(() => (allSelected ? new Set() : new Set(acceptable.map((o) => o.id))));
-
-  const acceptSelected = useMutation({
-    mutationFn: async (ids: string[]) => {
-      await Promise.all(ids.map((id) => ordersApi.accept(id)));
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['vendor', 'orders'] });
-      queryClient.invalidateQueries({ queryKey: ['vendor', 'order'] });
-      setSelected(new Set());
-    },
-  });
+  const toggleAll = () => setSelected(() => (allSelected ? new Set() : new Set(acceptable.map((order) => order.id))));
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+      <div className="flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-[var(--color-foreground)]">Orders</h1>
-          <p className="text-sm text-[var(--color-muted-foreground)]">Manage and track customer orders here.</p>
+          <p className="text-sm text-[var(--color-muted-foreground)]">Accept, prepare, hand off, and resolve vendor orders.</p>
         </div>
-        <div className="flex w-full sm:w-auto items-center gap-2">
-          <div className="relative flex-1 sm:w-64">
-            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-[var(--color-muted-foreground)]" />
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search order # or location…"
-              className="w-full pl-9 pr-4 py-2 bg-white border border-[var(--color-border)] rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]/20 focus:border-[var(--color-primary)] transition-colors"
-            />
-          </div>
+        <div className="relative w-full sm:w-72">
+          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-[var(--color-muted-foreground)]" />
+          <input
+            type="text"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Search order or location"
+            className="w-full rounded-lg border border-[var(--color-border)] bg-white py-2 pl-9 pr-4 text-sm transition-colors focus:border-[var(--color-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]/20"
+          />
         </div>
       </div>
 
-      <div className="flex gap-2 pb-2 overflow-x-auto hide-scrollbar">
+      <div className="flex gap-2 overflow-x-auto pb-2">
         {FILTERS.map((status) => (
           <button
             key={status}
             onClick={() => setFilter(status)}
-            className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${
+            className={`whitespace-nowrap rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
               filter === status
                 ? 'bg-[var(--color-primary)] text-white shadow-sm'
-                : 'bg-white text-[var(--color-muted-foreground)] border border-[var(--color-border)] hover:border-[var(--color-primary)]/50'
+                : 'border border-[var(--color-border)] bg-white text-[var(--color-muted-foreground)] hover:border-[var(--color-primary)]/50'
             }`}
           >
             {status === 'all' ? 'All' : orderStatusLabel(status)}
@@ -126,49 +144,42 @@ export default function OrdersPage() {
 
       {selectedAcceptable.length > 0 && (
         <div className="flex items-center justify-between gap-4 rounded-lg border border-[var(--color-primary)]/30 bg-[var(--color-primary)]/5 px-4 py-3">
-          <span className="text-sm font-medium text-[var(--color-foreground)]">
-            {selectedAcceptable.length} order(s) selected
-          </span>
+          <span className="text-sm font-medium text-[var(--color-foreground)]">{selectedAcceptable.length} new order(s) selected</span>
           <div className="flex items-center gap-2">
-            <button
-              onClick={() => setSelected(new Set())}
-              className="text-sm text-[var(--color-muted-foreground)] hover:underline"
-            >
+            <button onClick={() => setSelected(new Set())} className="text-sm text-[var(--color-muted-foreground)] hover:underline">
               Clear
             </button>
             <button
-              onClick={() => acceptSelected.mutate(selectedAcceptable.map((o) => o.id))}
+              onClick={() => acceptSelected.mutate(selectedAcceptable.map((order) => order.id))}
               disabled={acceptSelected.isPending}
               className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--color-primary)] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[var(--color-primary)]/90 disabled:opacity-60"
             >
               <Check className="h-4 w-4" />
-              {acceptSelected.isPending ? 'Accepting…' : `Accept ${selectedAcceptable.length} order(s)`}
+              {acceptSelected.isPending ? 'Accepting...' : `Accept ${selectedAcceptable.length}`}
             </button>
           </div>
         </div>
       )}
 
-      {acceptSelected.isError && (
-        <p className="text-sm text-[var(--color-error)]">
-          {(acceptSelected.error as Error).message}
-        </p>
+      {(acceptSelected.isError || runAction.isError) && (
+        <p className="text-sm text-[var(--color-error)]">{((acceptSelected.error || runAction.error) as Error).message}</p>
       )}
 
       <TonalCard className="p-0 overflow-hidden">
         {query.isLoading ? (
           <div className="p-6">
-            <LoadingState label="Loading orders…" rows={4} />
+            <LoadingState label="Loading orders..." rows={4} />
           </div>
         ) : query.isError ? (
           <ErrorState error={query.error} onRetry={() => query.refetch()} />
         ) : orders.length === 0 ? (
-          <EmptyState title="No orders found" description="Orders for the selected filter will appear here." icon={Box} />
+          <EmptyState title="No orders found" description="Paid customer orders for this filter appear here." icon={Box} />
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm text-left">
-              <thead className="text-xs text-[var(--color-muted-foreground)] uppercase bg-gray-50/50 border-b border-[var(--color-border)]">
+            <table className="w-full min-w-[1120px] text-left text-sm">
+              <thead className="border-b border-[var(--color-border)] bg-gray-50/50 text-xs uppercase text-[var(--color-muted-foreground)]">
                 <tr>
-                  <th className="px-4 py-4 font-medium w-10">
+                  <th className="w-10 px-4 py-4 font-medium">
                     <input
                       type="checkbox"
                       checked={allSelected}
@@ -178,19 +189,22 @@ export default function OrdersPage() {
                       className="h-4 w-4 rounded border-[var(--color-border)] accent-[var(--color-primary)] disabled:opacity-40"
                     />
                   </th>
-                  <th className="px-6 py-4 font-medium">Order</th>
-                  <th className="px-6 py-4 font-medium">Location</th>
-                  <th className="px-6 py-4 font-medium">Slot</th>
+                  <th className="px-6 py-4 font-medium">Order ID / items</th>
+                  <th className="px-6 py-4 font-medium">Schedule</th>
+                  <th className="px-6 py-4 font-medium">Customer / type</th>
+                  <th className="px-6 py-4 font-medium">Payment / rider</th>
                   <th className="px-6 py-4 font-medium">Total</th>
-                  <th className="px-6 py-4 font-medium">Status</th>
-                  <th className="px-6 py-4 font-medium">Action</th>
+                  <th className="px-6 py-4 font-medium">Current status</th>
+                  <th className="px-6 py-4 font-medium">Next action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[var(--color-border)]">
-                {orders.map((order: OrderSummary) => {
+                {orders.map((order) => {
                   const canSelect = ACCEPTABLE.has(order.orderStatus);
+                  const action = nextOrderAction(order.orderStatus);
+                  const stage = vendorOrderStage(order.orderStatus);
                   return (
-                    <tr key={order.id} className="hover:bg-gray-50/50 transition-colors">
+                    <tr key={order.id} className="transition-colors hover:bg-gray-50/50">
                       <td className="px-4 py-4">
                         <input
                           type="checkbox"
@@ -202,30 +216,75 @@ export default function OrdersPage() {
                         />
                       </td>
                       <td className="px-6 py-4 font-medium text-[var(--color-foreground)]">
-                        <div className="flex items-center gap-2">
-                          <Box className="h-4 w-4 shrink-0 text-[var(--color-muted-foreground)]" />
+                        <div className="flex items-start gap-2">
+                          <Box className="mt-0.5 h-4 w-4 shrink-0 text-[var(--color-muted-foreground)]" />
                           <div className="min-w-0">
                             <OrderItems id={order.id} fallback={order.orderNumber} />
                             <p className="text-xs text-[var(--color-muted-foreground)]">{order.orderNumber}</p>
+                            {order.specialNotes && (
+                              <p className="mt-1 max-w-xs truncate text-xs text-[var(--color-warning)]" title={order.specialNotes}>
+                                Note: {order.specialNotes}
+                              </p>
+                            )}
                           </div>
                         </div>
                       </td>
-                      <td className="px-6 py-4">{order.locationName || '—'}</td>
                       <td className="px-6 py-4">
-                        <span className="inline-flex items-center gap-1.5 py-1 px-2 rounded-md bg-gray-100 text-gray-800 text-xs font-medium">
-                          {order.deliverySlotName || formatTime(order.createdAt)}
-                        </span>
+                        <div className="space-y-1">
+                          <span className="flex items-center gap-1.5 text-xs font-medium text-[var(--color-foreground)]">
+                            <Clock className="h-3.5 w-3.5 text-[var(--color-muted-foreground)]" />
+                            {order.scheduledAt ? formatTime(order.scheduledAt) : order.deliverySlotName || formatTime(order.createdAt)}
+                          </span>
+                          <span className="block text-xs text-[var(--color-muted-foreground)]">{order.serviceDate}</span>
+                        </div>
                       </td>
-                      <td className="px-6 py-4 font-medium text-[var(--color-foreground)] tabular-nums">
+                      <td className="px-6 py-4">
+                        <div className="space-y-1">
+                          <span className="flex items-center gap-1.5 text-xs font-medium">
+                            <UserRound className="h-3.5 w-3.5 text-[var(--color-muted-foreground)]" />
+                            {customerSafeId(order.customerId)}
+                          </span>
+                          <span className="block text-xs capitalize text-[var(--color-muted-foreground)]">
+                            {order.deliveryMode?.replace(/_/g, ' ') || 'Delivery'} / {order.locationName || 'No location'}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="space-y-1">
+                          <span className="flex items-center gap-1.5 text-xs font-medium">
+                            <CreditCard className="h-3.5 w-3.5 text-[var(--color-muted-foreground)]" />
+                            {paymentStatusLabel(order)}
+                          </span>
+                          <span className="flex items-center gap-1.5 text-xs text-[var(--color-muted-foreground)]">
+                            <Truck className="h-3.5 w-3.5" />
+                            {riderAssignmentLabel(order)}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 font-medium tabular-nums text-[var(--color-foreground)]">
                         {formatNaira(orderVendorTotalKobo(order))}
                       </td>
                       <td className="px-6 py-4">
-                        <StatusChip status={orderStatusChip(order.orderStatus)} label={orderStatusLabel(order.orderStatus)} />
+                        <div className="space-y-1">
+                          <StatusChip status={orderStatusChip(order.orderStatus)} label={orderStatusLabel(order.orderStatus)} />
+                          <p className="text-xs text-[var(--color-muted-foreground)]">{vendorOrderStageLabel(stage)}</p>
+                        </div>
                       </td>
                       <td className="px-6 py-4">
-                        <Link href={`/orders/${order.id}`} className="text-[var(--color-primary)] font-medium hover:underline text-sm">
-                          Manage
-                        </Link>
+                        <div className="flex items-center gap-2">
+                          {action && (
+                            <button
+                              onClick={() => runAction.mutate({ order, action })}
+                              disabled={runAction.isPending}
+                              className="rounded-lg bg-[var(--color-primary)] px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-[var(--color-primary)]/90 disabled:opacity-50"
+                            >
+                              {runAction.isPending ? 'Working...' : orderActionLabel(action)}
+                            </button>
+                          )}
+                          <Link href={`/orders/${order.id}`} className="text-sm font-medium text-[var(--color-primary)] hover:underline">
+                            Detail
+                          </Link>
+                        </div>
                       </td>
                     </tr>
                   );

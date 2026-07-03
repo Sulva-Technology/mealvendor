@@ -3,9 +3,10 @@
 import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { TonalCard } from '@/src/components/shared/Cards';
+import { StatusChip } from '@/src/components/shared/StatusChip';
 import { LoadingState, ErrorState, EmptyState } from '@/src/components/shared/QueryStates';
 import { availabilityApi, campusesApi, profileApi, qk } from '@/src/lib/api/vendor';
-import type { AvailabilityEntry } from '@/src/lib/api/types';
+import type { AvailabilityEntry, StoreAvailabilityState } from '@/src/lib/api/types';
 import { useVendorApproval } from '@/src/lib/hooks/useVendorApproval';
 import { Save, AlertCircle, CalendarClock } from 'lucide-react';
 
@@ -33,6 +34,11 @@ export default function AvailabilityPage() {
   });
 
   const query = useQuery({ queryKey: qk.availability(), queryFn: availabilityApi.list });
+  const stateQuery = useQuery({
+    queryKey: ['vendor', 'availability-state'],
+    queryFn: availabilityApi.getState,
+    retry: false,
+  });
 
   // Local editable copy keyed by slot+day.
   const [map, setMap] = useState<Map<string, AvailabilityEntry>>(new Map());
@@ -53,6 +59,10 @@ export default function AvailabilityPage() {
       queryClient.invalidateQueries({ queryKey: qk.availability() });
       setDirty(false);
     },
+  });
+  const updateState = useMutation({
+    mutationFn: availabilityApi.updateState,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['vendor', 'availability-state'] }),
   });
 
   const slots = [...(slotsQuery.data ?? [])].sort((a, b) => a.displayOrder - b.displayOrder);
@@ -82,6 +92,8 @@ export default function AvailabilityPage() {
   };
 
   const activeCount = [...map.values()].filter((e) => e.available).length;
+  const storeState = stateQuery.data?.state ?? (profileQuery.data?.active ? 'open' : 'closed');
+  const acceptingOrders = stateQuery.data?.acceptingOrders ?? !!profileQuery.data?.active;
 
   return (
     <div className="space-y-6 pb-20 md:pb-0">
@@ -105,9 +117,49 @@ export default function AvailabilityPage() {
         </button>
       </div>
 
-      {save.isError && (
-        <p className="text-sm text-[var(--color-error)]">{(save.error as Error).message}</p>
+      {(save.isError || updateState.isError) && (
+        <p className="text-sm text-[var(--color-error)]">{((save.error || updateState.error) as Error).message}</p>
       )}
+
+      <TonalCard className="p-4">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <div className="mb-2 flex flex-wrap items-center gap-2">
+              <StatusChip status={acceptingOrders ? 'success' : 'warning'} label={acceptingOrders ? 'Accepting orders' : 'Not accepting orders'} />
+              <StatusChip status={storeState === 'open' ? 'success' : storeState === 'sold_out_today' ? 'error' : 'default'} label={storeState === 'sold_out_today' ? 'Sold out for today' : storeState === 'paused' ? 'Temporarily paused' : storeState === 'open' ? 'Open' : 'Closed'} />
+            </div>
+            <p className="text-sm text-[var(--color-muted-foreground)]">
+              Store state endpoint controls global open/closed, pause, cutoff, max daily orders, and unavailable dates.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {([
+              ['Open', 'open'],
+              ['Close', 'closed'],
+              ['Pause', 'paused'],
+              ['Sold out today', 'sold_out_today'],
+            ] satisfies [string, StoreAvailabilityState['state']][]).map(([label, state]) => (
+              <button
+                key={state}
+                onClick={() => updateState.mutate({ state, acceptingOrders: state === 'open' })}
+                disabled={!isApproved || updateState.isPending}
+                className={`rounded-lg border px-3 py-2 text-sm font-medium transition-colors disabled:opacity-50 ${
+                  storeState === state
+                    ? 'border-[var(--color-primary)] bg-[var(--color-primary)] text-white'
+                    : 'border-[var(--color-border)] bg-white text-[var(--color-foreground)] hover:bg-gray-50'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+        {stateQuery.isError && (
+          <p className="mt-3 text-xs text-[var(--color-muted-foreground)]">
+            Backend endpoint `GET/PATCH /vendor/availability/state` is missing or unavailable. Schedule toggles below still use live `/vendor/availability`.
+          </p>
+        )}
+      </TonalCard>
 
       {isLoading ? (
         <LoadingState label="Loading schedule…" />
@@ -182,9 +234,23 @@ export default function AvailabilityPage() {
 
             <TonalCard>
               <h3 className="text-sm font-semibold text-[var(--color-foreground)] mb-4">Schedule Health</h3>
-              <div className="flex justify-between items-center text-sm">
-                <span className="text-[var(--color-muted-foreground)]">Active slots/week</span>
-                <span className="font-semibold text-[var(--color-foreground)] tabular-nums">{activeCount}</span>
+              <div className="space-y-3 text-sm">
+                <div className="flex justify-between items-center">
+                  <span className="text-[var(--color-muted-foreground)]">Active slots/week</span>
+                  <span className="font-semibold text-[var(--color-foreground)] tabular-nums">{activeCount}</span>
+                </div>
+                <div className="flex justify-between gap-4">
+                  <span className="text-[var(--color-muted-foreground)]">Cutoff time</span>
+                  <span className="font-medium">{stateQuery.data?.cutoffTime ?? 'Backend not set'}</span>
+                </div>
+                <div className="flex justify-between gap-4">
+                  <span className="text-[var(--color-muted-foreground)]">Max orders/day</span>
+                  <span className="font-medium">{stateQuery.data?.maxOrdersPerDay ?? 'Backend not set'}</span>
+                </div>
+                <div className="flex justify-between gap-4">
+                  <span className="text-[var(--color-muted-foreground)]">Unavailable dates</span>
+                  <span className="text-right font-medium">{stateQuery.data?.unavailableDates?.length ?? 0}</span>
+                </div>
               </div>
             </TonalCard>
           </div>

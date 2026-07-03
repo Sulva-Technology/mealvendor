@@ -53,6 +53,15 @@ export function ErrorState({
   const message =
     apiErr?.message || (error instanceof Error ? error.message : 'Something went wrong.');
   const offline = apiErr?.status === 0;
+  const permissionDenied = apiErr?.status === 403;
+  const sessionExpired = apiErr?.status === 401;
+  const title = sessionExpired
+    ? 'Session expired'
+    : permissionDenied
+      ? 'Permission denied'
+      : offline
+        ? 'Network error'
+        : 'Could not load data';
 
   return (
     <div className="flex flex-col items-center justify-center gap-3 py-16 text-center">
@@ -61,7 +70,7 @@ export function ErrorState({
       </div>
       <div>
         <p className="text-sm font-semibold text-[var(--color-foreground)]">
-          {offline ? 'Connection problem' : 'Could not load data'}
+          {title}
         </p>
         <p className="mt-1 max-w-sm text-sm text-[var(--color-muted-foreground)]">{message}</p>
       </div>

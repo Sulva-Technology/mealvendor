@@ -1,18 +1,21 @@
 'use client';
 
-import React, { use } from 'react';
+import React, { use, useState } from 'react';
 import Link from 'next/link';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { ArrowLeft, CheckCircle, Package, ShoppingBag, Truck } from 'lucide-react';
+import { SupportAction } from '@/src/components/shared/SupportAction';
 import { TonalCard } from '@/src/components/shared/Cards';
+import { ErrorState, LoadingState } from '@/src/components/shared/QueryStates';
 import { StatusChip } from '@/src/components/shared/StatusChip';
-import { LoadingState, ErrorState } from '@/src/components/shared/QueryStates';
-import { batchesApi, qk } from '@/src/lib/api/vendor';
+import { batchesApi, ordersApi, qk } from '@/src/lib/api/vendor';
 import type { BatchDetail } from '@/src/lib/api/types';
-import { formatNaira, formatDate, formatTime, orderStatusChip, orderStatusLabel, batchStatusChip, prettifyEnum, orderVendorTotalKobo } from '@/src/lib/format';
-import { ArrowLeft, Truck, CheckCircle, Package, ShoppingBag } from 'lucide-react';
+import { batchStatusChip, formatDate, formatDateTime, formatNaira, formatTime, orderStatusChip, orderStatusLabel, orderVendorTotalKobo, prettifyEnum } from '@/src/lib/format';
+import { batchReadyCounts, canBatchMoveToReady, canMarkReady, handoffStatusLabel, riderAssignmentLabel } from '@/src/lib/vendor-workflow';
 
 export default function BatchDetailPage({ params }: { params: Promise<{ batchId: string }> }) {
   const { batchId } = use(params);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
   const queryClient = useQueryClient();
 
   const query = useQuery({ queryKey: qk.batch(batchId), queryFn: () => batchesApi.get(batchId) });
@@ -20,133 +23,162 @@ export default function BatchDetailPage({ params }: { params: Promise<{ batchId:
   const onSuccess = (updated: BatchDetail) => {
     queryClient.setQueryData(qk.batch(batchId), updated);
     queryClient.invalidateQueries({ queryKey: qk.batches() });
+    queryClient.invalidateQueries({ queryKey: ['vendor', 'orders'] });
+    setSelected(new Set());
   };
-  const readyM = useMutation({ mutationFn: () => batchesApi.readyForPickup(batchId), onSuccess });
-  const pickupM = useMutation({ mutationFn: () => batchesApi.pickup(batchId), onSuccess });
 
-  if (query.isLoading) return <LoadingState label="Loading batch…" />;
+  const markSelectedReady = useMutation({
+    mutationFn: async (ids: string[]) => {
+      try {
+        return await batchesApi.markOrdersReady(batchId, ids);
+      } catch (error) {
+        await Promise.all(ids.map((id) => ordersApi.ready(id)));
+        return batchesApi.get(batchId);
+      }
+    },
+    onSuccess,
+  });
+
+  const markAllReady = useMutation({ mutationFn: () => batchesApi.readyForPickup(batchId), onSuccess });
+  const pickup = useMutation({ mutationFn: () => batchesApi.pickup(batchId), onSuccess });
+
+  if (query.isLoading) return <LoadingState label="Loading batch..." />;
   if (query.isError || !query.data) return <ErrorState error={query.error} onRetry={() => query.refetch()} />;
 
   const batch = query.data;
   const orders = batch.orders ?? [];
-  const pending = readyM.isPending || pickupM.isPending;
+  const counts = batchReadyCounts(batch);
+  const readyable = orders.filter(canMarkReady);
+  const selectedReadyable = readyable.filter((order) => selected.has(order.id));
+  const allSelected = readyable.length > 0 && selectedReadyable.length === readyable.length;
+  const pending = markSelectedReady.isPending || markAllReady.isPending || pickup.isPending;
+  const mutationError = markSelectedReady.error || markAllReady.error || pickup.error;
 
-  // Aggregate item manifest across the batch's orders (uses item-level data when present).
-  const manifest = new Map<string, { name: string; unit: string; qty: number }>();
-  for (const o of orders as any[]) {
-    for (const it of o.items ?? []) {
-      const key = `${it.itemName}-${it.unitType}`;
-      const cur = manifest.get(key) ?? { name: it.itemName, unit: it.unitType, qty: 0 };
-      cur.qty += it.quantity;
-      manifest.set(key, cur);
-    }
-  }
-
-  let primaryAction: { label: string; run: () => void } | null = null;
-  if (batch.status === 'open' || batch.status === 'in_progress' || batch.status === 'assigned') {
-    primaryAction = { label: 'Mark Ready for Pickup', run: () => readyM.mutate() };
-  } else if (batch.status === 'closed') {
-    primaryAction = { label: 'Confirm Pickup', run: () => pickupM.mutate() };
-  }
-
-  const mutationError = readyM.error || pickupM.error;
+  const toggleOne = (id: string) =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
 
   return (
     <div className="space-y-6 pb-20 md:pb-0">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+      <div className="flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
         <div className="flex items-center gap-3">
-          <Link href="/batches" className="p-2 hover:bg-gray-100 rounded-md transition-colors bg-white border border-[var(--color-border)]">
+          <Link href="/batches" className="rounded-md border border-[var(--color-border)] bg-white p-2 transition-colors hover:bg-gray-50">
             <ArrowLeft className="h-5 w-5 text-[var(--color-muted-foreground)]" />
           </Link>
           <div>
             <h1 className="text-2xl font-semibold tracking-tight text-[var(--color-foreground)]">Batch {batch.batchNumber}</h1>
             <p className="text-sm font-medium text-[var(--color-muted-foreground)]">
-              {formatDate(batch.serviceDate)} • Cutoff {formatTime(batch.cutoffAt)}
+              {formatDate(batch.serviceDate)} / Pickup {batch.pickupTime ? formatTime(batch.pickupTime) : formatTime(batch.cutoffAt)}
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-3 w-full sm:w-auto">
+        <div className="flex flex-wrap items-center gap-2">
           <StatusChip status={batchStatusChip(batch.status)} label={prettifyEnum(batch.status)} />
-          {primaryAction && (
+          <SupportAction subjectType="batch" subjectId={batch.id} defaultCategory="rider_delay" label="Report issue" />
+          {canBatchMoveToReady(batch) && (
             <button
-              onClick={primaryAction.run}
+              onClick={() => markAllReady.mutate()}
               disabled={pending}
-              className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-6 py-2 bg-[var(--color-primary)] text-white rounded-lg text-sm font-medium hover:bg-[var(--color-primary)]/90 transition-colors shadow-sm disabled:opacity-60"
+              className="inline-flex items-center justify-center gap-2 rounded-lg bg-[var(--color-primary)] px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-[var(--color-primary)]/90 disabled:opacity-60"
             >
-              <CheckCircle className="w-4 h-4" />
-              {pending ? 'Working…' : primaryAction.label}
+              <CheckCircle className="h-4 w-4" />
+              {markAllReady.isPending ? 'Working...' : 'Mark all ready'}
+            </button>
+          )}
+          {batch.status === 'closed' && (
+            <button
+              onClick={() => pickup.mutate()}
+              disabled={pending}
+              className="inline-flex items-center justify-center gap-2 rounded-lg bg-[var(--color-primary)] px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-[var(--color-primary)]/90 disabled:opacity-60"
+            >
+              <Truck className="h-4 w-4" />
+              {pickup.isPending ? 'Working...' : 'Confirm rider pickup'}
             </button>
           )}
         </div>
       </div>
 
-      {mutationError && (
-        <p className="text-sm text-[var(--color-error)]">{(mutationError as Error).message}</p>
+      {selectedReadyable.length > 0 && (
+        <div className="flex items-center justify-between rounded-lg border border-[var(--color-primary)]/30 bg-[var(--color-primary)]/5 px-4 py-3">
+          <p className="text-sm font-medium">{selectedReadyable.length} valid order(s) selected</p>
+          <button
+            onClick={() => markSelectedReady.mutate(selectedReadyable.map((order) => order.id))}
+            disabled={pending}
+            className="rounded-lg bg-[var(--color-primary)] px-4 py-2 text-sm font-medium text-white disabled:opacity-60"
+          >
+            Mark selected ready
+          </button>
+        </div>
       )}
 
-      <div className="grid xl:grid-cols-3 gap-6">
-        <div className="xl:col-span-2 space-y-6">
-          {manifest.size > 0 && (
-            <TonalCard className="p-0 overflow-hidden">
-              <div className="p-4 bg-gray-50 border-b border-[var(--color-border)] flex items-center gap-2">
-                <Package className="w-5 h-5 text-[var(--color-muted-foreground)]" />
-                <h2 className="text-base font-semibold text-[var(--color-foreground)]">Consolidated Manifest</h2>
-              </div>
-              <table className="w-full text-sm text-left">
-                <thead className="bg-gray-50/50 text-xs text-[var(--color-muted-foreground)] uppercase border-b border-[var(--color-border)]">
-                  <tr>
-                    <th className="px-6 py-3 font-medium">Item</th>
-                    <th className="px-6 py-3 font-medium text-center">Unit</th>
-                    <th className="px-6 py-3 font-medium text-right">Total Qty</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[var(--color-border)]">
-                  {[...manifest.values()].map((m) => (
-                    <tr key={`${m.name}-${m.unit}`}>
-                      <td className="px-6 py-4 font-semibold text-[var(--color-foreground)]">{m.name}</td>
-                      <td className="px-6 py-4 text-center capitalize text-[var(--color-muted-foreground)]">{m.unit}</td>
-                      <td className="px-6 py-4 text-right">
-                        <span className="inline-flex items-center justify-center w-10 h-10 rounded-lg bg-[var(--color-primary)]/10 text-[var(--color-primary)] font-bold tabular-nums">
-                          {m.qty}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </TonalCard>
-          )}
+      {mutationError && <p className="text-sm text-[var(--color-error)]">{(mutationError as Error).message}</p>}
 
+      <div className="grid gap-6 xl:grid-cols-3">
+        <div className="space-y-6 xl:col-span-2">
           <TonalCard className="p-0 overflow-hidden">
-            <div className="p-4 bg-gray-50 border-b border-[var(--color-border)] flex items-center gap-2">
-              <ShoppingBag className="w-5 h-5 text-[var(--color-muted-foreground)]" />
+            <div className="flex items-center gap-2 border-b border-[var(--color-border)] bg-gray-50 p-4">
+              <ShoppingBag className="h-5 w-5 text-[var(--color-muted-foreground)]" />
               <h2 className="text-base font-semibold text-[var(--color-foreground)]">Orders ({orders.length})</h2>
             </div>
             {orders.length === 0 ? (
               <p className="p-6 text-sm text-[var(--color-muted-foreground)]">No orders in this batch yet.</p>
             ) : (
-              <div className="divide-y divide-[var(--color-border)]">
-                {orders.map((o) => (
-                  <div key={o.id} className="p-4 sm:p-6 flex flex-col sm:flex-row gap-4 items-start sm:items-center hover:bg-gray-50/30 transition-colors">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-3 mb-2">
-                        <Link href={`/orders/${o.id}`} className="font-mono text-sm font-semibold text-[var(--color-primary)] hover:underline">
-                          {o.orderNumber}
-                        </Link>
-                        <StatusChip status={orderStatusChip(o.orderStatus)} label={orderStatusLabel(o.orderStatus)} />
-                      </div>
-                      <p className="text-xs text-[var(--color-muted-foreground)]">
-                        {o.locationName} • {formatNaira(orderVendorTotalKobo(o))}
-                      </p>
-                    </div>
-                    <Link
-                      href={`/orders/${o.id}`}
-                      className="w-full sm:w-auto px-4 py-2 border border-[var(--color-border)] rounded-md text-sm font-medium text-center text-[var(--color-foreground)] bg-white hover:bg-gray-50 transition-colors"
-                    >
-                      Manage
-                    </Link>
-                  </div>
-                ))}
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[900px] text-left text-sm">
+                  <thead className="border-b border-[var(--color-border)] bg-gray-50/50 text-xs uppercase text-[var(--color-muted-foreground)]">
+                    <tr>
+                      <th className="w-10 px-4 py-3">
+                        <input
+                          type="checkbox"
+                          checked={allSelected}
+                          disabled={readyable.length === 0}
+                          onChange={() => setSelected(allSelected ? new Set() : new Set(readyable.map((order) => order.id)))}
+                          className="h-4 w-4 accent-[var(--color-primary)] disabled:opacity-40"
+                        />
+                      </th>
+                      <th className="px-4 py-3 font-medium">Order</th>
+                      <th className="px-4 py-3 font-medium">Status</th>
+                      <th className="px-4 py-3 font-medium">Rider</th>
+                      <th className="px-4 py-3 font-medium">Total</th>
+                      <th className="px-4 py-3 font-medium"></th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[var(--color-border)]">
+                    {orders.map((order) => (
+                      <tr key={order.id} className="hover:bg-gray-50/50">
+                        <td className="px-4 py-4">
+                          <input
+                            type="checkbox"
+                            checked={selected.has(order.id)}
+                            disabled={!canMarkReady(order)}
+                            onChange={() => toggleOne(order.id)}
+                            className="h-4 w-4 accent-[var(--color-primary)] disabled:opacity-30"
+                          />
+                        </td>
+                        <td className="px-4 py-4">
+                          <Link href={`/orders/${order.id}`} className="font-mono text-sm font-semibold text-[var(--color-primary)] hover:underline">
+                            {order.orderNumber}
+                          </Link>
+                          <p className="text-xs text-[var(--color-muted-foreground)]">{order.locationName || 'No location'}</p>
+                        </td>
+                        <td className="px-4 py-4">
+                          <StatusChip status={orderStatusChip(order.orderStatus)} label={orderStatusLabel(order.orderStatus)} />
+                        </td>
+                        <td className="px-4 py-4 text-xs text-[var(--color-muted-foreground)]">{riderAssignmentLabel(order)}</td>
+                        <td className="px-4 py-4 font-medium tabular-nums">{formatNaira(orderVendorTotalKobo(order))}</td>
+                        <td className="px-4 py-4 text-right">
+                          <Link href={`/orders/${order.id}`} className="text-sm font-medium text-[var(--color-primary)] hover:underline">
+                            Manage
+                          </Link>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             )}
           </TonalCard>
@@ -154,38 +186,39 @@ export default function BatchDetailPage({ params }: { params: Promise<{ batchId:
 
         <div className="space-y-6">
           <TonalCard>
-            <h3 className="text-sm font-semibold text-[var(--color-foreground)] mb-4">Batch Summary</h3>
+            <h3 className="mb-4 text-sm font-semibold text-[var(--color-foreground)]">Batch summary</h3>
             <div className="space-y-3 text-sm">
-              <div className="flex justify-between">
-                <span className="text-[var(--color-muted-foreground)]">Status</span>
-                <StatusChip status={batchStatusChip(batch.status)} label={prettifyEnum(batch.status)} />
-              </div>
-              <div className="flex justify-between">
-                <span className="text-[var(--color-muted-foreground)]">Orders</span>
-                <span className="font-semibold tabular-nums">{batch.orderCount}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-[var(--color-muted-foreground)]">Delivery earnings</span>
-                <span className="font-semibold tabular-nums">{formatNaira(batch.deliveryEarningsKobo)}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-[var(--color-muted-foreground)]">Closed at</span>
-                <span className="font-medium">{batch.closedAt ? formatTime(batch.closedAt) : '—'}</span>
-              </div>
+              <Summary label="Batch ID" value={batch.id.slice(0, 12) + '...'} />
+              <Summary label="Orders" value={String(batch.orderCount)} />
+              <Summary label="Ready" value={String(counts.ready)} />
+              <Summary label="Not ready" value={String(counts.notReady)} />
+              <Summary label="Rider assigned" value={batch.riderAssigned || batch.riderName ? batch.riderName || 'Yes' : 'No'} />
+              <Summary label="Handoff status" value={batch.handoffStatus || handoffStatusLabel(batch)} />
+              <Summary label="Pickup timestamp" value={batch.riderPickedUpAt ? formatDateTime(batch.riderPickedUpAt) : 'Pending'} />
             </div>
           </TonalCard>
 
-          <TonalCard className="bg-[var(--color-info)]/5 border border-[var(--color-info)]/20 shadow-sm">
-            <div className="flex items-center gap-3 mb-2">
-              <Truck className="w-5 h-5 text-[var(--color-info)]" />
-              <h3 className="text-sm font-semibold text-[var(--color-foreground)]">Delivery Mode</h3>
+          <TonalCard className="border-[var(--color-info)]/20 bg-[var(--color-info)]/5 shadow-sm">
+            <div className="mb-2 flex items-center gap-3">
+              <Truck className="h-5 w-5 text-[var(--color-info)]" />
+              <h3 className="text-sm font-semibold text-[var(--color-foreground)]">Rider handoff</h3>
             </div>
-            <p className="text-sm text-[var(--color-foreground)] font-medium capitalize">
-              {batch.deliveryMode?.replace(/_/g, ' ')}
+            <p className="text-sm font-medium capitalize text-[var(--color-foreground)]">{batch.deliveryMode?.replace(/_/g, ' ')}</p>
+            <p className="mt-1 text-xs text-[var(--color-muted-foreground)]">
+              Handoff code: {batch.handoffCode || 'Not provided by backend'}
             </p>
           </TonalCard>
         </div>
       </div>
+    </div>
+  );
+}
+
+function Summary({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex justify-between gap-4">
+      <span className="text-[var(--color-muted-foreground)]">{label}</span>
+      <span className="text-right font-medium">{value}</span>
     </div>
   );
 }

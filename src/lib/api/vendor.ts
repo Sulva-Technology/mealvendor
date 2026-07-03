@@ -28,8 +28,13 @@ import type {
   OrderSummary,
   DeviceTokenBody,
   SettlementSummary,
+  SettlementDetail,
+  StoreAvailabilityState,
+  SupportIssue,
+  SupportIssueBody,
   UpdateInventoryBody,
   UpdateMenuItemBody,
+  UpdateStoreAvailabilityBody,
   UpdateVendorProfileBody,
   UpsertPayoutAccountBody,
   VendorInventory,
@@ -179,6 +184,12 @@ export const ordersApi = {
   preparing: (id: string) =>
     fetchApi<OrderDetail>(`/vendor/orders/${id}/preparing`, { method: 'POST' }),
   ready: (id: string) => fetchApi<OrderDetail>(`/vendor/orders/${id}/ready`, { method: 'POST' }),
+  /**
+   * TODO backend contract: POST /vendor/orders/:id/handoff/confirm
+   * Confirms rider pickup for one ready order and returns updated OrderDetail.
+   */
+  confirmRiderPickup: (id: string) =>
+    fetchApi<OrderDetail>(`/vendor/orders/${id}/handoff/confirm`, { method: 'POST' }),
 };
 
 // --- Menu ---
@@ -228,6 +239,15 @@ export const batchesApi = {
   readyForPickup: (id: string) =>
     fetchApi<BatchDetail>(`/vendor/batches/${id}/ready-for-pickup`, { method: 'POST' }),
   pickup: (id: string) => fetchApi<BatchDetail>(`/vendor/batches/${id}/pickup`, { method: 'POST' }),
+  /**
+   * TODO backend contract: POST /vendor/batches/:id/orders/ready
+   * Body: { orderIds: string[] }. Returns updated BatchDetail.
+   */
+  markOrdersReady: (id: string, orderIds: string[]) =>
+    fetchApi<BatchDetail>(`/vendor/batches/${id}/orders/ready`, {
+      method: 'POST',
+      body: JSON.stringify({ orderIds }),
+    }),
 };
 
 // --- Inventory ---
@@ -249,7 +269,7 @@ export const inventoryApi = {
 // --- Settlements (read-only for vendors) ---
 export const settlementsApi = {
   list: () => fetchApi<SettlementSummary[]>('/vendor/settlements'),
-  get: (id: string) => fetchApi<SettlementSummary>(`/vendor/settlements/${id}`),
+  get: (id: string) => fetchApi<SettlementDetail>(`/vendor/settlements/${id}`),
 };
 
 // --- Reviews ---
@@ -264,6 +284,29 @@ export const availabilityApi = {
     fetchApi<AvailabilityEntry[]>('/vendor/availability', {
       method: 'PUT',
       body: JSON.stringify({ entries: entries.map(toSlotDayEntry) }),
+    }),
+  /**
+   * TODO backend contract: GET/PATCH /vendor/availability/state
+   * Controls open/closed/paused/sold-out, cutoff, max daily orders, unavailable dates.
+   */
+  getState: () => fetchApi<StoreAvailabilityState>('/vendor/availability/state'),
+  updateState: (body: UpdateStoreAvailabilityBody) =>
+    fetchApi<StoreAvailabilityState>('/vendor/availability/state', {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
+};
+
+// --- Support / escalation ---
+export const supportApi = {
+  /**
+   * TODO backend contract: POST /vendor/support/issues
+   * Creates an issue visible to vendor support/admin, linked to order/batch/settlement/inventory/handoff.
+   */
+  createIssue: (body: SupportIssueBody) =>
+    fetchApi<SupportIssue>('/vendor/support/issues', {
+      method: 'POST',
+      body: JSON.stringify(body),
     }),
 };
 

@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { TonalCard } from '@/src/components/shared/Cards';
 import { StatusChip } from '@/src/components/shared/StatusChip';
 import { Modal } from '@/src/components/shared/Modal';
+import { SupportAction } from '@/src/components/shared/SupportAction';
 import { LoadingState, ErrorState } from '@/src/components/shared/QueryStates';
 import { inventoryApi, menuApi, qk } from '@/src/lib/api/vendor';
 import type { VendorInventory } from '@/src/lib/api/types';
@@ -178,13 +179,19 @@ function InventoryRow({ row, date }: { row: VendorInventory; date: string }) {
   });
 
   const out = row.remainingQuantity <= 0;
+  const low = !out && row.remainingQuantity <= Math.max(2, Math.ceil(row.quantityTotal * 0.2));
 
   return (
     <tr className="hover:bg-gray-50/50 transition-colors">
       <td className="px-6 py-4 font-medium text-[var(--color-foreground)]">{row.menuItemName}</td>
       <td className="px-6 py-4 capitalize text-[var(--color-muted-foreground)]">{row.unitCode}</td>
       <td className="px-6 py-4">{row.deliverySlotName}</td>
-      <td className="px-6 py-4 tabular-nums text-[var(--color-muted-foreground)]">{row.remainingQuantity}</td>
+      <td className="px-6 py-4 tabular-nums text-[var(--color-muted-foreground)]">
+        <div className="flex flex-col">
+          <span>{row.remainingQuantity}</span>
+          {low && <span className="text-xs font-medium text-[var(--color-warning)]">Low stock</span>}
+        </div>
+      </td>
       <td className="px-6 py-4">
         <div className="flex items-center w-24">
           <input
@@ -197,7 +204,13 @@ function InventoryRow({ row, date }: { row: VendorInventory; date: string }) {
         </div>
       </td>
       <td className="px-6 py-4">
-        {out ? <StatusChip status="error" label="Out of Stock" /> : <StatusChip status="success" label="In Stock" />}
+        {out ? (
+          <StatusChip status="error" label="Out of stock" />
+        ) : low ? (
+          <StatusChip status="warning" label="Low stock" />
+        ) : (
+          <StatusChip status="success" label="In stock" />
+        )}
       </td>
       <td className="px-6 py-4 text-right">
         <div className="flex items-center justify-end gap-2">
@@ -216,6 +229,13 @@ function InventoryRow({ row, date }: { row: VendorInventory; date: string }) {
           >
             {save.isPending ? 'Saving…' : save.isError ? 'Retry' : 'Save'}
           </button>
+          <SupportAction
+            subjectType="inventory"
+            subjectId={row.id}
+            defaultCategory="inventory_problem"
+            label="Issue"
+            context={`Inventory issue for ${row.menuItemName} / ${row.deliverySlotName}`}
+          />
         </div>
         {adjusting && <AdjustModal row={row} date={date} onClose={() => setAdjusting(false)} />}
       </td>
@@ -286,6 +306,8 @@ export default function InventoryPage() {
 
   const query = useQuery({ queryKey: qk.inventory(date), queryFn: () => inventoryApi.list(date) });
   const rows = query.data ?? [];
+  const outRows = rows.filter((row) => row.remainingQuantity <= 0);
+  const lowRows = rows.filter((row) => row.remainingQuantity > 0 && row.remainingQuantity <= Math.max(2, Math.ceil(row.quantityTotal * 0.2)));
 
   return (
     <div className="space-y-6">
@@ -305,6 +327,30 @@ export default function InventoryPage() {
           />
         </div>
       </div>
+
+      {rows.length > 0 && (
+        <div className="grid gap-3 sm:grid-cols-3">
+          <TonalCard className="p-4">
+            <p className="text-xs font-medium uppercase text-[var(--color-muted-foreground)]">Out of stock</p>
+            <p className="mt-1 text-2xl font-semibold tabular-nums text-[var(--color-error)]">{outRows.length}</p>
+            <p className="mt-1 truncate text-xs text-[var(--color-muted-foreground)]" title={outRows.map((row) => row.menuItemName).join(', ')}>
+              {outRows.length ? outRows.map((row) => row.menuItemName).join(', ') : 'None'}
+            </p>
+          </TonalCard>
+          <TonalCard className="p-4">
+            <p className="text-xs font-medium uppercase text-[var(--color-muted-foreground)]">Low stock</p>
+            <p className="mt-1 text-2xl font-semibold tabular-nums text-[var(--color-warning)]">{lowRows.length}</p>
+            <p className="mt-1 truncate text-xs text-[var(--color-muted-foreground)]" title={lowRows.map((row) => row.menuItemName).join(', ')}>
+              {lowRows.length ? lowRows.map((row) => row.menuItemName).join(', ') : 'None'}
+            </p>
+          </TonalCard>
+          <TonalCard className="p-4">
+            <p className="text-xs font-medium uppercase text-[var(--color-muted-foreground)]">Affected items</p>
+            <p className="mt-1 text-2xl font-semibold tabular-nums text-[var(--color-foreground)]">{new Set([...outRows, ...lowRows].map((row) => row.menuItemId)).size}</p>
+            <p className="mt-1 text-xs text-[var(--color-muted-foreground)]">Use Adjust or Save to restock/update.</p>
+          </TonalCard>
+        </div>
+      )}
 
       <TonalCard className="p-0 overflow-hidden">
         <div className="p-4 border-b border-[var(--color-border)] bg-gray-50/50 flex items-center gap-2">
