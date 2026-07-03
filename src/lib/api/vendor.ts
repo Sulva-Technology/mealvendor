@@ -6,6 +6,9 @@ import type {
   VendorOnboardBody,
   VendorOnboardResult,
   AvailabilityEntry,
+  ConfirmLogoBody,
+  LogoUploadTarget,
+  LogoUploadUrlBody,
   BatchDetail,
   BatchSummary,
   CreateAdjustmentBody,
@@ -285,6 +288,20 @@ export const profileApi = {
   get: () => fetchApi<VendorProfile>('/vendor/profile'),
   update: (body: UpdateVendorProfileBody) =>
     fetchApi<VendorProfile>('/vendor/profile', { method: 'PATCH', body: JSON.stringify(body) }),
+  // --- Logo upload (3-step signed-upload flow) ---
+  // 1) ask backend for a signed upload target
+  requestLogoUploadUrl: (body: LogoUploadUrlBody) =>
+    fetchApi<LogoUploadTarget>('/vendor/profile/logo/upload-url', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  // 3) confirm — backend swaps in the new object (removing the old one) and
+  // returns the updated profile with a fresh short-lived signed `logoUrl`.
+  confirmLogo: (body: ConfirmLogoBody) =>
+    fetchApi<VendorProfile>('/vendor/profile/logo/confirm', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
   getPayoutAccount: () =>
     fetchApi<VendorPayoutAccount | null>('/vendor/payout-account').catch(() => null),
   updatePayoutAccount: (body: UpsertPayoutAccountBody) =>
@@ -293,6 +310,24 @@ export const profileApi = {
       body: JSON.stringify(body),
     }),
 };
+
+/**
+ * Step 2 of the logo flow: upload the raw bytes straight to the signed URL
+ * returned by `requestLogoUploadUrl`. This is a direct PUT to Supabase Storage,
+ * so it must NOT go through `fetchApi` (no backend base URL, no vendor JWT, no
+ * `{ data }` envelope). The signed `uploadUrl` already carries the token.
+ */
+export async function uploadLogoBinary(uploadUrl: string, file: File | Blob): Promise<void> {
+  const res = await fetch(uploadUrl, {
+    method: 'PUT',
+    headers: { 'Content-Type': file.type || 'application/octet-stream' },
+    body: file,
+  });
+  if (!res.ok) {
+    const detail = await res.text().catch(() => '');
+    throw new Error(`Logo upload failed (${res.status}). ${detail}`.trim());
+  }
+}
 
 // Re-export envelope helpers for any direct callers.
 export type { ListEnvelope, ItemEnvelope };

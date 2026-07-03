@@ -1,15 +1,20 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { TonalCard } from '@/src/components/shared/Cards';
 import { Modal } from '@/src/components/shared/Modal';
 import { LoadingState, ErrorState } from '@/src/components/shared/QueryStates';
-import { profileApi, authApi, notificationsApi, qk } from '@/src/lib/api/vendor';
+import { profileApi, authApi, notificationsApi, uploadLogoBinary, qk } from '@/src/lib/api/vendor';
 import { useAuthStore } from '@/src/lib/auth/session';
 import { useVendorApproval } from '@/src/lib/hooks/useVendorApproval';
-import type { DeliveryMode, VendorPayoutAccount, VendorProfile } from '@/src/lib/api/types';
+import type {
+  DeliveryMode,
+  LogoContentType,
+  VendorPayoutAccount,
+  VendorProfile,
+} from '@/src/lib/api/types';
 import { formatNaira } from '@/src/lib/format';
 import {
   Store,
@@ -21,6 +26,8 @@ import {
   Coins,
   BellRing,
   Loader2,
+  ImageIcon,
+  Upload,
 } from 'lucide-react';
 import {
   getBrowserPushReadiness,
@@ -152,6 +159,109 @@ function PayoutModal({
         </div>
       </form>
     </Modal>
+  );
+}
+
+const MAX_LOGO_BYTES = 2 * 1024 * 1024; // 2 MB
+const ALLOWED_LOGO_TYPES: LogoContentType[] = ['image/jpeg', 'image/png', 'image/webp'];
+
+function LogoCard({ profile }: { profile: VendorProfile }) {
+  const queryClient = useQueryClient();
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const upload = useMutation({
+    mutationFn: async (file: File) => {
+      // 1) signed target → 2) raw PUT bytes → 3) confirm (returns fresh profile).
+      const target = await profileApi.requestLogoUploadUrl({
+        contentType: file.type as LogoContentType,
+        sizeBytes: file.size,
+      });
+      await uploadLogoBinary(target.uploadUrl, file);
+      return profileApi.confirmLogo({ key: target.key });
+    },
+    onSuccess: (updated) => {
+      // logoUrl is a short-lived signed URL — render straight from this response.
+      queryClient.setQueryData(qk.profile(), updated);
+    },
+    onError: (e) => setError((e as Error).message),
+  });
+
+  const pick = (file: File | undefined) => {
+    setError(null);
+    if (!file) return;
+    if (!ALLOWED_LOGO_TYPES.includes(file.type as LogoContentType)) {
+      setError('Logo must be a JPEG, PNG, or WebP image.');
+      return;
+    }
+    if (file.size > MAX_LOGO_BYTES) {
+      setError('Logo must be 2 MB or smaller.');
+      return;
+    }
+    upload.mutate(file);
+  };
+
+  const busy = upload.isPending;
+
+  return (
+    <TonalCard>
+      <div className="flex items-start gap-4 mb-6">
+        <div className="p-3 bg-gray-100 rounded-xl">
+          <ImageIcon className="w-6 h-6 text-[var(--color-primary)]" />
+        </div>
+        <div>
+          <h2 className="text-lg font-semibold tracking-tight">Store Logo</h2>
+          <p className="text-sm text-[var(--color-muted-foreground)]">
+            Shown to customers on your storefront. JPEG, PNG or WebP, up to 2 MB.
+          </p>
+        </div>
+      </div>
+
+      <div className="flex items-center gap-5 border-t border-[var(--color-border)] pt-5">
+        <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-xl border border-[var(--color-border)] bg-gray-50">
+          {profile.logoUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={profile.logoUrl} alt="Store logo" className="h-full w-full object-cover" />
+          ) : (
+            <div className="flex h-full w-full items-center justify-center text-[var(--color-muted-foreground)]">
+              <ImageIcon className="h-7 w-7" />
+            </div>
+          )}
+          {busy && (
+            <div className="absolute inset-0 flex items-center justify-center bg-white/70">
+              <Loader2 className="h-5 w-5 animate-spin text-[var(--color-primary)]" />
+            </div>
+          )}
+        </div>
+
+        <div className="flex flex-col items-start gap-2">
+          <input
+            ref={inputRef}
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            className="hidden"
+            onChange={(e) => {
+              pick(e.target.files?.[0]);
+              e.target.value = ''; // allow re-selecting the same file
+            }}
+          />
+          <button
+            type="button"
+            onClick={() => inputRef.current?.click()}
+            disabled={busy}
+            className="inline-flex items-center gap-2 rounded-lg border border-[var(--color-border)] px-4 py-2 text-sm font-medium text-[var(--color-foreground)] transition-colors hover:bg-gray-50 disabled:opacity-50"
+          >
+            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+            {busy ? 'Uploading…' : profile.logoUrl ? 'Replace logo' : 'Upload logo'}
+          </button>
+          {error && (
+            <span className="flex items-center gap-1 text-xs text-[var(--color-error)]">
+              <AlertCircle className="h-3 w-3" /> {error}
+            </span>
+          )}
+        </div>
+      </div>
+    </TonalCard>
   );
 }
 
@@ -550,6 +660,8 @@ export default function SettingsPage() {
             </div>
           </form>
         </TonalCard>
+
+        {profileQ.data && <LogoCard profile={profileQ.data} />}
 
         <TonalCard>
           <div className="flex items-start gap-4 mb-6">

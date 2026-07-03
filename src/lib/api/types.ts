@@ -327,6 +327,25 @@ export interface UpdateVendorProfileBody {
   serviceFeeKobo?: number | null;
 }
 
+/** Allowed logo MIME types (jpeg/png/webp only, ≤ 2 MB). */
+export type LogoContentType = 'image/jpeg' | 'image/png' | 'image/webp';
+
+export interface LogoUploadUrlBody {
+  contentType: LogoContentType;
+  sizeBytes: number;
+}
+
+/** Signed-upload target returned by the backend. `uploadUrl` already carries the token. */
+export interface LogoUploadTarget {
+  uploadUrl: string;
+  token: string;
+  key: string;
+}
+
+export interface ConfirmLogoBody {
+  key: string;
+}
+
 export interface VendorPayoutAccount {
   id: string;
   vendorId: string;
