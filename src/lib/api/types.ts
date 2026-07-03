@@ -141,6 +141,24 @@ export interface CreateMenuCategoryBody {
   displayOrder?: number;
 }
 
+/** Allowed menu item image MIME types (jpeg/png/webp only, <= 5 MB). */
+export type MenuItemImageContentType = 'image/jpeg' | 'image/png' | 'image/webp';
+
+export interface MenuItemImageUploadUrlBody {
+  contentType: MenuItemImageContentType;
+  sizeBytes: number;
+}
+
+export interface MenuItemImageUploadTarget {
+  uploadUrl: string;
+  token: string;
+  key: string;
+}
+
+export interface ConfirmMenuItemImageBody {
+  key: string;
+}
+
 export interface MenuItemSchedule {
   id?: string;
   deliverySlotId: string;

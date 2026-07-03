@@ -7,6 +7,7 @@ import type {
   VendorOnboardResult,
   AvailabilityEntry,
   ConfirmLogoBody,
+  ConfirmMenuItemImageBody,
   LogoUploadTarget,
   LogoUploadUrlBody,
   BatchDetail,
@@ -15,6 +16,8 @@ import type {
   CreateMenuCategoryBody,
   CreateMenuItemBody,
   MenuCategory,
+  MenuItemImageUploadTarget,
+  MenuItemImageUploadUrlBody,
   DeliverySlot,
   ItemEnvelope,
   ListEnvelope,
@@ -199,6 +202,16 @@ export const menuApi = {
     fetchApi<VendorMenuItem>(`/vendor/menu-items/${id}/activate`, { method: 'POST' }),
   deactivate: (id: string) =>
     fetchApi<VendorMenuItem>(`/vendor/menu-items/${id}/deactivate`, { method: 'POST' }),
+  requestImageUploadUrl: (id: string, body: MenuItemImageUploadUrlBody) =>
+    fetchApi<MenuItemImageUploadTarget>(`/vendor/menu-items/${id}/image/upload-url`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  confirmImage: (id: string, body: ConfirmMenuItemImageBody) =>
+    fetchApi<VendorMenuItem>(`/vendor/menu-items/${id}/image/confirm`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
   listSchedules: (id: string) =>
     fetchApi<MenuItemSchedule[]>(`/vendor/menu-items/${id}/schedules`),
   replaceSchedules: (id: string, entries: MenuItemSchedule[]) =>
@@ -311,13 +324,7 @@ export const profileApi = {
     }),
 };
 
-/**
- * Step 2 of the logo flow: upload the raw bytes straight to the signed URL
- * returned by `requestLogoUploadUrl`. This is a direct PUT to Supabase Storage,
- * so it must NOT go through `fetchApi` (no backend base URL, no vendor JWT, no
- * `{ data }` envelope). The signed `uploadUrl` already carries the token.
- */
-export async function uploadLogoBinary(uploadUrl: string, file: File | Blob): Promise<void> {
+async function uploadBinaryToSignedUrl(label: string, uploadUrl: string, file: File | Blob): Promise<void> {
   const res = await fetch(uploadUrl, {
     method: 'PUT',
     headers: { 'Content-Type': file.type || 'application/octet-stream' },
@@ -325,8 +332,20 @@ export async function uploadLogoBinary(uploadUrl: string, file: File | Blob): Pr
   });
   if (!res.ok) {
     const detail = await res.text().catch(() => '');
-    throw new Error(`Logo upload failed (${res.status}). ${detail}`.trim());
+    throw new Error(`${label} upload failed (${res.status}). ${detail}`.trim());
   }
+}
+
+/**
+ * Step 2 of signed upload flows: direct PUT to Supabase Storage. Do not use
+ * `fetchApi`; the signed `uploadUrl` carries storage auth, not the vendor JWT.
+ */
+export async function uploadLogoBinary(uploadUrl: string, file: File | Blob): Promise<void> {
+  await uploadBinaryToSignedUrl('Logo', uploadUrl, file);
+}
+
+export async function uploadMenuItemImageBinary(uploadUrl: string, file: File | Blob): Promise<void> {
+  await uploadBinaryToSignedUrl('Menu item image', uploadUrl, file);
 }
 
 // Re-export envelope helpers for any direct callers.

@@ -9,14 +9,14 @@ import { LoadingState, ErrorState, EmptyState } from '@/src/components/shared/Qu
 import { menuApi, qk } from '@/src/lib/api/vendor';
 import { formatNaira } from '@/src/lib/format';
 import { useVendorApproval } from '@/src/lib/hooks/useVendorApproval';
-import { Lock, Plus, Search, UtensilsCrossed } from 'lucide-react';
+import { ImageIcon, Lock, Plus, Search, UtensilsCrossed } from 'lucide-react';
 
 export default function MenuPage() {
   const [search, setSearch] = useState('');
   const queryClient = useQueryClient();
   const { isApproved } = useVendorApproval();
 
-  const query = useQuery({ queryKey: qk.menuItems(), queryFn: menuApi.list });
+  const query = useQuery({ queryKey: qk.menuItems(), queryFn: menuApi.list, refetchOnMount: 'always' });
 
   const toggle = useMutation({
     mutationFn: ({ id, active }: { id: string; active: boolean }) =>
@@ -81,6 +81,16 @@ export default function MenuPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {items.map((item) => (
             <TonalCard key={item.id} className="flex flex-col p-5">
+              <div className="mb-4 aspect-[4/3] overflow-hidden rounded-lg border border-[var(--color-border)] bg-gray-50">
+                {item.imageUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={item.imageUrl} alt={item.name} className="h-full w-full object-cover" />
+                ) : (
+                  <div className="flex h-full w-full items-center justify-center text-[var(--color-muted-foreground)]">
+                    <ImageIcon className="h-8 w-8" />
+                  </div>
+                )}
+              </div>
               <div className="flex justify-between items-start mb-4">
                 <div>
                   <Link href={`/menu/${item.id}/edit`} className="text-base font-semibold text-[var(--color-foreground)] hover:text-[var(--color-primary)] transition-colors">

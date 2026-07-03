@@ -1,21 +1,138 @@
 'use client';
 
-import React, { useState, useEffect, use } from 'react';
+import React, { useState, useEffect, use, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { TonalCard } from '@/src/components/shared/Cards';
 import { StatusChip } from '@/src/components/shared/StatusChip';
 import { LoadingState, ErrorState } from '@/src/components/shared/QueryStates';
-import { menuApi, campusesApi, profileApi, qk } from '@/src/lib/api/vendor';
-import type { CreateMenuItemBody, MenuItemSchedule } from '@/src/lib/api/types';
+import { menuApi, campusesApi, profileApi, qk, uploadMenuItemImageBinary } from '@/src/lib/api/vendor';
+import type {
+  CreateMenuItemBody,
+  MenuItemImageContentType,
+  MenuItemSchedule,
+  VendorMenuItem,
+} from '@/src/lib/api/types';
 import { useVendorApproval } from '@/src/lib/hooks/useVendorApproval';
-import { ArrowLeft, Save, AlertCircle } from 'lucide-react';
+import { ArrowLeft, Save, AlertCircle, ImageIcon, Loader2, Upload } from 'lucide-react';
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const MAX_MENU_IMAGE_BYTES = 5 * 1024 * 1024;
+const ALLOWED_MENU_IMAGE_TYPES: MenuItemImageContentType[] = ['image/jpeg', 'image/png', 'image/webp'];
 
 function schedKey(slotId: string, day: number) {
   return `${slotId}__${day}`;
+}
+
+function MenuItemImageCard({
+  itemId,
+  imageUrl,
+  itemName,
+  isApproved,
+  lockTitle,
+}: {
+  itemId: string;
+  imageUrl?: string | null;
+  itemName: string;
+  isApproved: boolean;
+  lockTitle: string;
+}) {
+  const queryClient = useQueryClient();
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const upload = useMutation({
+    mutationFn: async (file: File) => {
+      const target = await menuApi.requestImageUploadUrl(itemId, {
+        contentType: file.type as MenuItemImageContentType,
+        sizeBytes: file.size,
+      });
+      await uploadMenuItemImageBinary(target.uploadUrl, file);
+      return menuApi.confirmImage(itemId, { key: target.key });
+    },
+    onSuccess: (updated) => {
+      // imageUrl is short-lived. Render the fresh signed URL from this response.
+      queryClient.setQueryData(qk.menuItem(itemId), updated);
+      queryClient.setQueryData(qk.menuItems(), (old: VendorMenuItem[] | undefined) =>
+        old?.map((item) => (item.id === updated.id ? updated : item))
+      );
+      setError(null);
+    },
+    onError: (e) => setError((e as Error).message),
+  });
+
+  const pick = (file: File | undefined) => {
+    setError(null);
+    if (!file) return;
+    if (!ALLOWED_MENU_IMAGE_TYPES.includes(file.type as MenuItemImageContentType)) {
+      setError('Image must be JPEG, PNG, or WebP.');
+      return;
+    }
+    if (file.size > MAX_MENU_IMAGE_BYTES) {
+      setError('Image must be 5 MB or smaller.');
+      return;
+    }
+    upload.mutate(file);
+  };
+
+  const busy = upload.isPending;
+
+  return (
+    <TonalCard>
+      <div className="mb-5 flex items-start gap-4">
+        <div className="rounded-xl bg-gray-100 p-3">
+          <ImageIcon className="h-6 w-6 text-[var(--color-primary)]" />
+        </div>
+        <div>
+          <h2 className="text-lg font-semibold tracking-tight text-[var(--color-foreground)]">Item Image</h2>
+          <p className="text-sm text-[var(--color-muted-foreground)]">
+            JPEG, PNG or WebP, up to 5 MB.
+          </p>
+        </div>
+      </div>
+
+      <div className="overflow-hidden rounded-lg border border-[var(--color-border)] bg-gray-50 aspect-[4/3]">
+        {imageUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={imageUrl} alt={itemName || 'Menu item'} className="h-full w-full object-cover" />
+        ) : (
+          <div className="flex h-full w-full items-center justify-center text-[var(--color-muted-foreground)]">
+            <ImageIcon className="h-10 w-10" />
+          </div>
+        )}
+      </div>
+
+      <div className="mt-4 flex flex-col items-start gap-2">
+        <input
+          ref={inputRef}
+          type="file"
+          accept="image/jpeg,image/png,image/webp"
+          className="hidden"
+          onChange={(e) => {
+            pick(e.target.files?.[0]);
+            e.target.value = '';
+          }}
+        />
+        <button
+          type="button"
+          onClick={() => inputRef.current?.click()}
+          disabled={busy || !isApproved}
+          title={!isApproved ? lockTitle : undefined}
+          className="inline-flex items-center gap-2 rounded-lg border border-[var(--color-border)] px-4 py-2 text-sm font-medium text-[var(--color-foreground)] transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+          {busy ? 'Uploading...' : imageUrl ? 'Replace image' : 'Upload image'}
+        </button>
+        {error && (
+          <span className="flex items-start gap-1.5 text-xs text-[var(--color-error)]">
+            <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+            {error}
+          </span>
+        )}
+      </div>
+    </TonalCard>
+  );
 }
 
 export default function EditMenuItemPage({ params }: { params: Promise<{ itemId: string }> }) {
@@ -27,7 +144,12 @@ export default function EditMenuItemPage({ params }: { params: Promise<{ itemId:
   const lockTitle = 'Available once your vendor account is approved';
 
   const metaQ = useQuery({ queryKey: qk.menuMetadata(), queryFn: menuApi.metadata });
-  const itemQ = useQuery({ queryKey: qk.menuItem(itemId), queryFn: () => menuApi.get(itemId), enabled: !isNew });
+  const itemQ = useQuery({
+    queryKey: qk.menuItem(itemId),
+    queryFn: () => menuApi.get(itemId),
+    enabled: !isNew,
+    refetchOnMount: 'always',
+  });
   const schedulesQ = useQuery({
     queryKey: qk.menuSchedules(itemId),
     queryFn: () => menuApi.listSchedules(itemId),
@@ -410,6 +532,16 @@ export default function EditMenuItemPage({ params }: { params: Promise<{ itemId:
         </div>
 
         <div className="space-y-6">
+          {!isNew && itemQ.data && (
+            <MenuItemImageCard
+              itemId={itemId}
+              imageUrl={itemQ.data.imageUrl}
+              itemName={itemQ.data.name}
+              isApproved={isApproved}
+              lockTitle={lockTitle}
+            />
+          )}
+
           <TonalCard className="bg-gray-50 border-[var(--color-border)]">
             <div className="flex items-start gap-3">
               <AlertCircle className="w-5 h-5 text-[var(--color-muted-foreground)] shrink-0 mt-0.5" />
