@@ -91,7 +91,26 @@ export default function AvailabilityPage() {
     setDirty(true);
   };
 
+  // Bulk toggle every slot × day. `available` true = select all, false = clear all.
+  const setAll = (available: boolean) => {
+    if (!isApproved) return;
+    setMap((prev) => {
+      const next = new Map(prev);
+      for (const slot of slots) {
+        for (let day = 0; day < DAYS.length; day++) {
+          const k = key(slot.id, day);
+          const existing = next.get(k);
+          next.set(k, existing ? { ...existing, available } : { deliverySlotId: slot.id, dayOfWeek: day, available });
+        }
+      }
+      return next;
+    });
+    setDirty(true);
+  };
+
+  const totalCells = slots.length * DAYS.length;
   const activeCount = [...map.values()].filter((e) => e.available).length;
+  const allSelected = totalCells > 0 && activeCount === totalCells;
   const storeState = stateQuery.data?.state ?? (profileQuery.data?.active ? 'open' : 'closed');
   const acceptingOrders = stateQuery.data?.acceptingOrders ?? !!profileQuery.data?.active;
 
@@ -102,19 +121,29 @@ export default function AvailabilityPage() {
           <h1 className="text-2xl font-semibold tracking-tight text-[var(--color-foreground)]">Operating Schedule</h1>
           <p className="text-sm text-[var(--color-muted-foreground)]">Define the days and slots you are open for orders.</p>
         </div>
-        <button
-          onClick={() => save.mutate()}
-          disabled={!dirty || save.isPending || !isApproved}
-          title={!isApproved ? lockTitle : undefined}
-          className="px-4 py-2 bg-[var(--color-primary)] text-white rounded-lg text-sm font-medium hover:bg-[var(--color-primary)]/90 flex items-center justify-center gap-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {save.isPending ? (
-            <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-          ) : (
-            <Save className="w-4 h-4" />
-          )}
-          Save Changes
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setAll(!allSelected)}
+            disabled={!isApproved || totalCells === 0}
+            title={!isApproved ? lockTitle : undefined}
+            className="px-4 py-2 border border-[var(--color-border)] bg-white text-[var(--color-foreground)] rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {allSelected ? 'Clear all slots' : 'Select all slots'}
+          </button>
+          <button
+            onClick={() => save.mutate()}
+            disabled={!dirty || save.isPending || !isApproved}
+            title={!isApproved ? lockTitle : undefined}
+            className="px-4 py-2 bg-[var(--color-primary)] text-white rounded-lg text-sm font-medium hover:bg-[var(--color-primary)]/90 flex items-center justify-center gap-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {save.isPending ? (
+              <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+            ) : (
+              <Save className="w-4 h-4" />
+            )}
+            Save Changes
+          </button>
+        </div>
       </div>
 
       {(save.isError || updateState.isError) && (
