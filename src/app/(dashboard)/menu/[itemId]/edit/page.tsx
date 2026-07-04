@@ -283,6 +283,20 @@ export default function EditMenuItemPage({ params }: { params: Promise<{ itemId:
     });
   };
 
+  // Set every day of a slot to `value` in one action.
+  const setSlotAllDays = (slotId: string, value: boolean) => {
+    setSchedMap((prev) => {
+      const next = new Map(prev);
+      for (let day = 0; day < DAYS.length; day++) {
+        const k = schedKey(slotId, day);
+        const existing = next.get(k);
+        if (existing) next.set(k, { ...existing, available: value });
+        else next.set(k, { deliverySlotId: slotId, dayOfWeek: day, available: value });
+      }
+      return next;
+    });
+  };
+
   if (!isNew && itemQ.isLoading) return <LoadingState label="Loading item…" />;
   if (!isNew && itemQ.isError) return <ErrorState error={itemQ.error} onRetry={() => itemQ.refetch()} />;
 
@@ -509,11 +523,24 @@ export default function EditMenuItemPage({ params }: { params: Promise<{ itemId:
                     Tick the slots and days this item is offered. Inventory only appears once the item is
                     active, scheduled here, and the day is open in your delivery availability.
                   </p>
-                  {slots.map((slot) => (
+                  {slots.map((slot) => {
+                    const allOn = DAYS.every((_, dayIdx) => schedMap.get(schedKey(slot.id, dayIdx))?.available ?? false);
+                    return (
                     <div key={slot.id} className="border border-[var(--color-border)] rounded-lg p-3">
                       <div className="flex items-center justify-between mb-2">
                         <span className="text-sm font-medium text-[var(--color-foreground)]">{slot.name}</span>
-                        <span className="text-xs text-[var(--color-muted-foreground)]">{slot.deliveryTime}</span>
+                        <div className="flex items-center gap-3">
+                          <button
+                            type="button"
+                            disabled={!isApproved}
+                            title={!isApproved ? lockTitle : undefined}
+                            onClick={() => setSlotAllDays(slot.id, !allOn)}
+                            className="text-xs font-medium text-[var(--color-primary)] hover:underline disabled:opacity-50 disabled:no-underline disabled:cursor-not-allowed"
+                          >
+                            {allOn ? 'Clear all' : 'Select all'}
+                          </button>
+                          <span className="text-xs text-[var(--color-muted-foreground)]">{slot.deliveryTime}</span>
+                        </div>
                       </div>
                       <div className="flex flex-wrap gap-1.5">
                         {DAYS.map((d, dayIdx) => {
@@ -537,7 +564,8 @@ export default function EditMenuItemPage({ params }: { params: Promise<{ itemId:
                         })}
                       </div>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </TonalCard>
