@@ -17,6 +17,7 @@ export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [unregisteredHint, setUnregisteredHint] = useState(false);
   const [slow, setSlow] = useState(false);
   const router = useRouter();
   const setSession = useAuthStore((s) => s.setSession);
@@ -34,6 +35,7 @@ export default function LoginPage() {
     e.preventDefault();
     setLoading(true);
     setError(null);
+    setUnregisteredHint(false);
 
     try {
       const tokens = await authApi.login(email, password);
@@ -47,11 +49,20 @@ export default function LoginPage() {
         err instanceof ApiError
           ? err.status === 401
             ? 'Invalid email or password.'
-            : err.status === 0
-              ? 'Could not reach the server. It may be waking up — please try again.'
-              : err.message
+            : err.status === 403
+              ? // Portal/permission block — the backend's message is the source
+                // of truth (e.g. "Your account is not permitted to sign in to
+                // this portal."). Show it verbatim.
+                err.message
+              : err.status === 0
+                ? 'Could not reach the server. It may be waking up — please try again.'
+                : err.message
           : (err as Error).message || 'An error occurred during login.';
       setError(message);
+      // A 401 here can also mean an admin added this email as vendor staff/owner
+      // but the person never actually signed up (no password set). Nudge them to
+      // register — login won't work until the account exists.
+      setUnregisteredHint(err instanceof ApiError && err.status === 401);
       setLoading(false);
     }
   };
@@ -75,9 +86,18 @@ export default function LoginPage() {
         </div>
 
         {error && (
-          <div className="flex items-start gap-2 rounded-lg border border-[var(--color-error)]/20 bg-[var(--color-error)]/10 p-3 text-sm text-[var(--color-error)]">
-            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-            <span>{error}</span>
+          <div className="space-y-2">
+            <div className="flex items-start gap-2 rounded-lg border border-[var(--color-error)]/20 bg-[var(--color-error)]/10 p-3 text-sm text-[var(--color-error)]">
+              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+              <span>{error}</span>
+            </div>
+            {unregisteredHint && (
+              <p className="px-1 text-xs text-[var(--color-muted-foreground)]">
+                If an admin recently added you as vendor staff or owner, you still
+                need to finish signing up first — this email won&apos;t work until
+                the account has a password set. Use your invitation link to set one.
+              </p>
+            )}
           </div>
         )}
 

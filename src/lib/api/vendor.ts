@@ -99,14 +99,27 @@ export const authApi = {
     }),
   /**
    * Send a password-reset email. The backend (which brokers Supabase) emails a
-   * recovery link that lands on /auth/callback. Body is `{email}` only — the
-   * endpoint whitelists strictly, so no `redirectTo` here (per-role default used).
+   * recovery link that lands on /auth/callback. Body is `{email, portal}` only —
+   * `portal: 'vendor'` scopes the reset to this portal; the endpoint whitelists
+   * strictly, so no `redirectTo` here (per-role default used). Returns 200
+   * non-enumerating regardless of whether the account exists.
    */
   requestPasswordReset: (email: string) =>
     fetchApi<unknown>('/auth/password-reset', {
       method: 'POST',
       auth: false,
-      body: JSON.stringify({ email }),
+      body: JSON.stringify({ email, portal: 'vendor' }),
+    }),
+  /**
+   * Re-send the signup confirmation email for a vendor account that hasn't
+   * verified yet. Body is `{email, portal}`. Like password-reset, returns 200
+   * non-enumerating — surface a neutral message either way.
+   */
+  resendConfirmation: (email: string) =>
+    fetchApi<unknown>('/auth/resend-confirmation', {
+      method: 'POST',
+      auth: false,
+      body: JSON.stringify({ email, portal: 'vendor' }),
     }),
   /** Exchange a refresh token for fresh tokens (e.g. after onboarding to pick up vendor_id). */
   refresh: (refreshToken: string) =>

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { TonalCard } from '@/src/components/shared/Cards';
@@ -11,7 +11,24 @@ import { LoadingState, ErrorState } from '@/src/components/shared/QueryStates';
 import { inventoryApi, menuApi, qk } from '@/src/lib/api/vendor';
 import type { VendorInventory } from '@/src/lib/api/types';
 import { formatNaira, todayIso, formatDateTime, formatDate } from '@/src/lib/format';
-import { Calendar as CalendarIcon, Layers, SlidersHorizontal, AlertCircle, CalendarClock, UtensilsCrossed } from 'lucide-react';
+import {
+  Calendar as CalendarIcon,
+  Layers,
+  SlidersHorizontal,
+  AlertCircle,
+  CalendarClock,
+  UtensilsCrossed,
+  Search,
+  ChevronDown,
+} from 'lucide-react';
+
+type RowStatus = 'out' | 'low' | 'in';
+
+function statusOf(row: VendorInventory): RowStatus {
+  if (row.remainingQuantity <= 0) return 'out';
+  if (row.remainingQuantity <= Math.max(2, Math.ceil(row.quantityTotal * 0.2))) return 'low';
+  return 'in';
+}
 
 function AdjustModal({
   row,
@@ -178,21 +195,18 @@ function InventoryRow({ row, date }: { row: VendorInventory; date: string }) {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: qk.inventory(date) }),
   });
 
-  const out = row.remainingQuantity <= 0;
-  const low = !out && row.remainingQuantity <= Math.max(2, Math.ceil(row.quantityTotal * 0.2));
+  const status = statusOf(row);
 
   return (
     <tr className="hover:bg-gray-50/50 transition-colors">
-      <td className="px-6 py-4 font-medium text-[var(--color-foreground)]">{row.menuItemName}</td>
-      <td className="px-6 py-4 capitalize text-[var(--color-muted-foreground)]">{row.unitCode}</td>
-      <td className="px-6 py-4">{row.deliverySlotName}</td>
-      <td className="px-6 py-4 tabular-nums text-[var(--color-muted-foreground)]">
+      <td className="px-6 py-3.5 font-medium text-[var(--color-foreground)]">{row.deliverySlotName}</td>
+      <td className="px-6 py-3.5 tabular-nums text-[var(--color-muted-foreground)]">
         <div className="flex flex-col">
           <span>{row.remainingQuantity}</span>
-          {low && <span className="text-xs font-medium text-[var(--color-warning)]">Low stock</span>}
+          {status === 'low' && <span className="text-xs font-medium text-[var(--color-warning)]">Low stock</span>}
         </div>
       </td>
-      <td className="px-6 py-4">
+      <td className="px-6 py-3.5">
         <div className="flex items-center w-24">
           <input
             type="number"
@@ -203,16 +217,16 @@ function InventoryRow({ row, date }: { row: VendorInventory; date: string }) {
           />
         </div>
       </td>
-      <td className="px-6 py-4">
-        {out ? (
+      <td className="px-6 py-3.5">
+        {status === 'out' ? (
           <StatusChip status="error" label="Out of stock" />
-        ) : low ? (
+        ) : status === 'low' ? (
           <StatusChip status="warning" label="Low stock" />
         ) : (
           <StatusChip status="success" label="In stock" />
         )}
       </td>
-      <td className="px-6 py-4 text-right">
+      <td className="px-6 py-3.5 text-right">
         <div className="flex items-center justify-end gap-2">
           <button
             onClick={() => setAdjusting(true)}
@@ -240,6 +254,88 @@ function InventoryRow({ row, date }: { row: VendorInventory; date: string }) {
         {adjusting && <AdjustModal row={row} date={date} onClose={() => setAdjusting(false)} />}
       </td>
     </tr>
+  );
+}
+
+type ItemGroup = {
+  itemId: string;
+  itemName: string;
+  unitCode: string;
+  rows: VendorInventory[];
+  remaining: number;
+  outCount: number;
+  lowCount: number;
+};
+
+function ItemSection({
+  group,
+  date,
+  collapsed,
+  onToggle,
+}: {
+  group: ItemGroup;
+  date: string;
+  collapsed: boolean;
+  onToggle: () => void;
+}) {
+  const rollup: RowStatus =
+    group.outCount > 0 ? 'out' : group.lowCount > 0 ? 'low' : 'in';
+
+  return (
+    <div className="rounded-xl border border-[var(--color-border)] bg-white overflow-hidden">
+      <button
+        type="button"
+        onClick={onToggle}
+        className="w-full flex items-center gap-3 px-5 py-3.5 text-left hover:bg-gray-50/70 transition-colors"
+      >
+        <ChevronDown
+          className={`h-4 w-4 text-[var(--color-muted-foreground)] shrink-0 transition-transform ${
+            collapsed ? '-rotate-90' : ''
+          }`}
+        />
+        <UtensilsCrossed className="h-4 w-4 text-[var(--color-muted-foreground)] shrink-0" />
+        <span className="font-semibold text-[var(--color-foreground)] capitalize">{group.itemName}</span>
+        <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-[var(--color-muted-foreground)] capitalize">
+          {group.unitCode}
+        </span>
+        <span className="text-xs text-[var(--color-muted-foreground)]">
+          {group.rows.length} {group.rows.length === 1 ? 'slot' : 'slots'}
+        </span>
+        <div className="ml-auto flex items-center gap-3">
+          <span className="text-xs text-[var(--color-muted-foreground)] tabular-nums">
+            {group.remaining} remaining
+          </span>
+          {rollup === 'out' ? (
+            <StatusChip status="error" label={`${group.outCount} out`} />
+          ) : rollup === 'low' ? (
+            <StatusChip status="warning" label={`${group.lowCount} low`} />
+          ) : (
+            <StatusChip status="success" label="In stock" />
+          )}
+        </div>
+      </button>
+
+      {!collapsed && (
+        <div className="overflow-x-auto border-t border-[var(--color-border)]">
+          <table className="w-full text-sm text-left">
+            <thead className="text-xs text-[var(--color-muted-foreground)] uppercase border-b border-[var(--color-border)] bg-gray-50/50">
+              <tr>
+                <th className="px-6 py-3 font-medium">Slot</th>
+                <th className="px-6 py-3 font-medium">Remaining</th>
+                <th className="px-6 py-3 font-medium">Total Qty</th>
+                <th className="px-6 py-3 font-medium">Status</th>
+                <th className="px-6 py-3 font-medium text-right">Action</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[var(--color-border)]">
+              {group.rows.map((row) => (
+                <InventoryRow key={row.id} row={row} date={date} />
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -301,13 +397,83 @@ function InventoryEmpty({ date }: { date: string }) {
   );
 }
 
+type StatusFilter = 'all' | 'low' | 'out';
+
 export default function InventoryPage() {
   const [date, setDate] = useState(todayIso());
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
 
   const query = useQuery({ queryKey: qk.inventory(date), queryFn: () => inventoryApi.list(date) });
-  const rows = query.data ?? [];
-  const outRows = rows.filter((row) => row.remainingQuantity <= 0);
-  const lowRows = rows.filter((row) => row.remainingQuantity > 0 && row.remainingQuantity <= Math.max(2, Math.ceil(row.quantityTotal * 0.2)));
+  const rows = useMemo(() => query.data ?? [], [query.data]);
+
+  const outRows = useMemo(() => rows.filter((row) => statusOf(row) === 'out'), [rows]);
+  const lowRows = useMemo(() => rows.filter((row) => statusOf(row) === 'low'), [rows]);
+
+  // Filter rows by search text + status, then group by menu item.
+  const groups = useMemo<ItemGroup[]>(() => {
+    const term = search.trim().toLowerCase();
+    const filtered = rows.filter((row) => {
+      const s = statusOf(row);
+      if (statusFilter === 'out' && s !== 'out') return false;
+      if (statusFilter === 'low' && s !== 'low') return false;
+      if (
+        term &&
+        !row.menuItemName.toLowerCase().includes(term) &&
+        !row.deliverySlotName.toLowerCase().includes(term)
+      )
+        return false;
+      return true;
+    });
+
+    const byItem = new Map<string, ItemGroup>();
+    for (const row of filtered) {
+      let g = byItem.get(row.menuItemId);
+      if (!g) {
+        g = {
+          itemId: row.menuItemId,
+          itemName: row.menuItemName,
+          unitCode: row.unitCode,
+          rows: [],
+          remaining: 0,
+          outCount: 0,
+          lowCount: 0,
+        };
+        byItem.set(row.menuItemId, g);
+      }
+      g.rows.push(row);
+      g.remaining += row.remainingQuantity;
+      const s = statusOf(row);
+      if (s === 'out') g.outCount += 1;
+      else if (s === 'low') g.lowCount += 1;
+    }
+
+    return Array.from(byItem.values())
+      .map((g) => ({
+        ...g,
+        rows: g.rows.sort((a, b) => a.deliverySlotName.localeCompare(b.deliverySlotName)),
+      }))
+      .sort((a, b) => a.itemName.localeCompare(b.itemName));
+  }, [rows, search, statusFilter]);
+
+  const toggle = (id: string) =>
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+
+  const allCollapsed = groups.length > 0 && groups.every((g) => collapsed.has(g.itemId));
+  const toggleAll = () =>
+    setCollapsed(allCollapsed ? new Set() : new Set(groups.map((g) => g.itemId)));
+
+  const filterTabs: { key: StatusFilter; label: string; count: number }[] = [
+    { key: 'all', label: 'All', count: rows.length },
+    { key: 'low', label: 'Low', count: lowRows.length },
+    { key: 'out', label: 'Out', count: outRows.length },
+  ];
 
   return (
     <div className="space-y-6">
@@ -316,15 +482,44 @@ export default function InventoryPage() {
         <p className="text-sm text-[var(--color-muted-foreground)]">Manage daily stock levels for your menu items.</p>
       </div>
 
-      <div className="flex flex-col sm:flex-row gap-4 items-center bg-white p-4 rounded-xl border border-[var(--color-border)] shadow-sm">
-        <div className="flex items-center gap-2 w-full sm:w-auto">
+      <div className="flex flex-col lg:flex-row gap-3 lg:items-center bg-white p-4 rounded-xl border border-[var(--color-border)] shadow-sm">
+        <div className="flex items-center gap-2">
           <CalendarIcon className="h-5 w-5 text-[var(--color-muted-foreground)]" />
           <input
             type="date"
             value={date}
             onChange={(e) => setDate(e.target.value)}
-            className="flex-1 sm:w-auto px-3 py-1.5 text-sm font-medium border border-[var(--color-border)] rounded-md focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]/20"
+            className="px-3 py-1.5 text-sm font-medium border border-[var(--color-border)] rounded-md focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]/20"
           />
+        </div>
+
+        <div className="relative flex-1 lg:max-w-xs">
+          <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[var(--color-muted-foreground)]" />
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search item or slot…"
+            className="w-full pl-9 pr-3 py-1.5 text-sm border border-[var(--color-border)] rounded-md focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]/20"
+          />
+        </div>
+
+        <div className="flex items-center gap-1 rounded-lg border border-[var(--color-border)] p-0.5 lg:ml-auto">
+          {filterTabs.map((tab) => (
+            <button
+              key={tab.key}
+              type="button"
+              onClick={() => setStatusFilter(tab.key)}
+              className={`px-3 py-1 rounded-md text-sm font-medium transition-colors ${
+                statusFilter === tab.key
+                  ? 'bg-[var(--color-primary)] text-white'
+                  : 'text-[var(--color-muted-foreground)] hover:bg-gray-50'
+              }`}
+            >
+              {tab.label}
+              <span className="ml-1.5 tabular-nums opacity-70">{tab.count}</span>
+            </button>
+          ))}
         </div>
       </div>
 
@@ -352,42 +547,57 @@ export default function InventoryPage() {
         </div>
       )}
 
-      <TonalCard className="p-0 overflow-hidden">
-        <div className="p-4 border-b border-[var(--color-border)] bg-gray-50/50 flex items-center gap-2">
-          <Layers className="h-4 w-4 text-[var(--color-muted-foreground)]" />
-          <h2 className="text-sm font-medium text-[var(--color-foreground)]">Stock for {date}</h2>
-        </div>
-        {query.isLoading ? (
-          <div className="p-6">
-            <LoadingState label="Loading inventory…" rows={3} />
-          </div>
-        ) : query.isError ? (
+      {query.isLoading ? (
+        <TonalCard className="p-6">
+          <LoadingState label="Loading inventory…" rows={3} />
+        </TonalCard>
+      ) : query.isError ? (
+        <TonalCard className="p-0 overflow-hidden">
           <ErrorState error={query.error} onRetry={() => query.refetch()} />
-        ) : rows.length === 0 ? (
+        </TonalCard>
+      ) : rows.length === 0 ? (
+        <TonalCard className="p-0 overflow-hidden">
           <InventoryEmpty date={date} />
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm text-left">
-              <thead className="text-xs text-[var(--color-muted-foreground)] uppercase border-b border-[var(--color-border)]">
-                <tr>
-                  <th className="px-6 py-4 font-medium">Item</th>
-                  <th className="px-6 py-4 font-medium">Unit</th>
-                  <th className="px-6 py-4 font-medium">Slot</th>
-                  <th className="px-6 py-4 font-medium">Remaining</th>
-                  <th className="px-6 py-4 font-medium">Total Qty</th>
-                  <th className="px-6 py-4 font-medium">Status</th>
-                  <th className="px-6 py-4 font-medium text-right">Action</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[var(--color-border)]">
-                {rows.map((row) => (
-                  <InventoryRow key={row.id} row={row} date={date} />
-                ))}
-              </tbody>
-            </table>
+        </TonalCard>
+      ) : (
+        <div className="space-y-3">
+          <div className="flex items-center justify-between px-1">
+            <div className="flex items-center gap-2 text-sm text-[var(--color-muted-foreground)]">
+              <Layers className="h-4 w-4" />
+              <span>
+                {groups.length} {groups.length === 1 ? 'item' : 'items'} • {formatDate(date)}
+              </span>
+            </div>
+            {groups.length > 0 && (
+              <button
+                type="button"
+                onClick={toggleAll}
+                className="text-sm font-medium text-[var(--color-primary)] hover:underline"
+              >
+                {allCollapsed ? 'Expand all' : 'Collapse all'}
+              </button>
+            )}
           </div>
-        )}
-      </TonalCard>
+
+          {groups.length === 0 ? (
+            <TonalCard className="p-10 text-center">
+              <p className="text-sm text-[var(--color-muted-foreground)]">
+                No items match your search or filter.
+              </p>
+            </TonalCard>
+          ) : (
+            groups.map((group) => (
+              <ItemSection
+                key={group.itemId}
+                group={group}
+                date={date}
+                collapsed={collapsed.has(group.itemId)}
+                onToggle={() => toggle(group.itemId)}
+              />
+            ))
+          )}
+        </div>
+      )}
     </div>
   );
 }

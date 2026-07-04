@@ -37,6 +37,8 @@ export default function AcceptInvitePage() {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [confirmSent, setConfirmSent] = useState(false);
+  const [resending, setResending] = useState(false);
+  const [resent, setResent] = useState(false);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -89,6 +91,24 @@ export default function AcceptInvitePage() {
           : (err as Error).message || 'An error occurred. Please try again.';
       setSubmitError(message);
       setSubmitting(false);
+    }
+  };
+
+  // Re-send the confirmation email. Endpoint is 200 non-enumerating, so we treat
+  // any non-network response as success and show a neutral acknowledgement.
+  const handleResendConfirmation = async () => {
+    setResending(true);
+    try {
+      await authApi.resendConfirmation(email.trim());
+      setResent(true);
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 0) {
+        setSubmitError('Could not reach the server. It may be waking up — please try again.');
+      } else {
+        setResent(true);
+      }
+    } finally {
+      setResending(false);
     }
   };
 
@@ -159,6 +179,21 @@ export default function AcceptInvitePage() {
           >
             Go to sign in
           </Link>
+          {resent ? (
+            <p className="text-xs text-[var(--color-muted-foreground)]">
+              If that email needs confirming, a new link is on its way. Check your
+              inbox and spam folder.
+            </p>
+          ) : (
+            <button
+              type="button"
+              onClick={handleResendConfirmation}
+              disabled={resending}
+              className="text-xs text-[var(--color-primary)] hover:underline disabled:opacity-50"
+            >
+              {resending ? 'Resending…' : "Didn't get it? Resend confirmation email"}
+            </button>
+          )}
         </div>
       </div>
     );
