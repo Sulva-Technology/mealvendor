@@ -21,6 +21,7 @@ import type {
   DeliverySlot,
   ItemEnvelope,
   ListEnvelope,
+  MeSession,
   MenuItemSchedule,
   MenuMetadata,
   NotificationRecord,
@@ -157,8 +158,19 @@ export const onboardingApi = {
     }),
 };
 
+// --- Current session (role-aware) ---
+export const meApi = {
+  /**
+   * Role-aware session: `GET /v1/me` → `{ vendorMemberships: [...] }`. Used to
+   * tell an `owner` from a `staff` member (the JWT role claim is the generic
+   * "vendor"). NOTE: distinct from `authApi.me()` (`/auth/me`, generic user).
+   */
+  get: () => fetchApi<MeSession>('/me'),
+};
+
 // --- Query keys ---
 export const qk = {
+  me: () => ['me'] as const,
   campuses: () => ['public', 'campuses'] as const,
   deliverySlots: (campusId: string) => ['public', 'campuses', campusId, 'delivery-slots'] as const,
   orders: (filters?: Record<string, unknown>) => ['vendor', 'orders', filters ?? {}] as const,

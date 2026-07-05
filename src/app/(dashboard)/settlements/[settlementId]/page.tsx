@@ -9,9 +9,18 @@ import { TonalCard } from '@/src/components/shared/Cards';
 import { ErrorState, LoadingState } from '@/src/components/shared/QueryStates';
 import { StatusChip } from '@/src/components/shared/StatusChip';
 import { settlementsApi, qk } from '@/src/lib/api/vendor';
+import { OwnerOnly } from '@/src/components/shared/OwnerOnly';
 import { formatDate, formatDateTime, formatNaira, prettifyEnum, settlementStatusChip } from '@/src/lib/format';
 
 export default function SettlementDetailPage({ params }: { params: Promise<{ settlementId: string }> }) {
+  return (
+    <OwnerOnly>
+      <SettlementDetailInner params={params} />
+    </OwnerOnly>
+  );
+}
+
+function SettlementDetailInner({ params }: { params: Promise<{ settlementId: string }> }) {
   const { settlementId } = use(params);
 
   const query = useQuery({

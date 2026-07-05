@@ -9,6 +9,7 @@ import { LoadingState, ErrorState } from '@/src/components/shared/QueryStates';
 import { profileApi, authApi, notificationsApi, uploadLogoBinary, qk } from '@/src/lib/api/vendor';
 import { useAuthStore } from '@/src/lib/auth/session';
 import { useVendorApproval } from '@/src/lib/hooks/useVendorApproval';
+import { useVendorRole } from '@/src/lib/hooks/useVendorRole';
 import type {
   DeliveryMode,
   LogoContentType,
@@ -39,6 +40,36 @@ import {
 
 // Platform fallback when a vendor sets no override (kept in sync with backend default).
 const DEFAULT_SERVICE_FEE_KOBO = 20000; // ₦200
+
+/**
+ * Sign-out flow shared by the owner and staff settings views: unregister this
+ * device's push token while the session is still valid, then clear everything.
+ */
+function useSignOut() {
+  const router = useRouter();
+  const queryClient = useQueryClient();
+  const clearSession = useAuthStore((s) => s.clearSession);
+  const [signingOut, setSigningOut] = useState(false);
+
+  const signOut = async () => {
+    setSigningOut(true);
+    try {
+      const token = await getCurrentPushToken();
+      if (token) {
+        await notificationsApi.deleteDeviceToken(token).catch(() => {});
+        await deletePushToken();
+      }
+    } catch {
+      // Best-effort — never block sign-out on push cleanup.
+    }
+    await authApi.logout();
+    clearSession();
+    queryClient.clear();
+    router.replace('/login');
+  };
+
+  return { signOut, signingOut };
+}
 
 function PayoutModal({
   existing,
@@ -520,12 +551,14 @@ function PushNotificationsCard() {
   );
 }
 
-export default function SettingsPage() {
-  const router = useRouter();
+/**
+ * Owner-facing settings: full editability. Staff get {@link StaffSettingsView}.
+ * The route wrapper {@link SettingsPage} picks between them by role.
+ */
+function OwnerSettingsView() {
   const queryClient = useQueryClient();
-  const clearSession = useAuthStore((s) => s.clearSession);
   const { isApproved } = useVendorApproval();
-  const [signingOut, setSigningOut] = useState(false);
+  const { signOut, signingOut } = useSignOut();
   const [editingPayout, setEditingPayout] = useState(false);
 
   const profileQ = useQuery({ queryKey: qk.profile(), queryFn: profileApi.get });
@@ -565,25 +598,6 @@ export default function SettingsPage() {
       setTimeout(() => setSaved(false), 2500);
     },
   });
-
-  const handleSignOut = async () => {
-    setSigningOut(true);
-    // Unregister this device's push token while the session (Supabase JWT) is
-    // still valid, so the backend stops pushing to a signed-out device.
-    try {
-      const token = await getCurrentPushToken();
-      if (token) {
-        await notificationsApi.deleteDeviceToken(token).catch(() => {});
-        await deletePushToken();
-      }
-    } catch {
-      // Best-effort — never block sign-out on push cleanup.
-    }
-    await authApi.logout();
-    clearSession();
-    queryClient.clear();
-    router.replace('/login');
-  };
 
   if (profileQ.isLoading) return <LoadingState label="Loading settings…" />;
   if (profileQ.isError) return <ErrorState error={profileQ.error} onRetry={() => profileQ.refetch()} />;
@@ -778,7 +792,7 @@ export default function SettingsPage() {
           </div>
           <div className="flex justify-end border-t border-[var(--color-border)] pt-4 mt-2">
             <button
-              onClick={handleSignOut}
+              onClick={signOut}
               disabled={signingOut}
               className="px-6 py-2 bg-red-50 text-red-600 hover:bg-red-100 border border-red-200 text-sm font-medium rounded-lg transition-colors flex items-center justify-center min-w-[120px]"
             >
@@ -789,4 +803,103 @@ export default function SettingsPage() {
       </div>
     </div>
   );
+}
+
+function ReadOnlyRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex flex-col gap-0.5 border-t border-[var(--color-border)] py-3 first:border-t-0 first:pt-0 sm:flex-row sm:items-center sm:justify-between">
+      <span className="text-xs uppercase tracking-wide text-[var(--color-muted-foreground)]">{label}</span>
+      <span className="text-sm font-medium text-[var(--color-foreground)]">{value || '—'}</span>
+    </div>
+  );
+}
+
+/**
+ * Staff-facing settings: the store profile is read-only (owner-managed) and the
+ * payout account is hidden entirely. Staff can still manage their own device's
+ * push notifications and sign out.
+ */
+function StaffSettingsView({ profile }: { profile: VendorProfile }) {
+  const { signOut, signingOut } = useSignOut();
+
+  const deliveryMode =
+    profile.defaultDeliveryMode === 'vendor_delivery'
+      ? 'Vendor handled delivery'
+      : 'Meal Direct riders';
+  const serviceFee =
+    profile.serviceFeeKobo == null
+      ? `Platform default (${formatNaira(DEFAULT_SERVICE_FEE_KOBO)})`
+      : formatNaira(profile.serviceFeeKobo);
+
+  return (
+    <div className="space-y-6 max-w-4xl mx-auto pb-20 md:pb-0">
+      <div>
+        <h1 className="text-2xl font-semibold tracking-tight text-[var(--color-foreground)]">Store Settings</h1>
+        <p className="text-sm text-[var(--color-muted-foreground)]">
+          Store profile and payouts are managed by the store owner.
+        </p>
+      </div>
+
+      <div className="grid gap-6">
+        <TonalCard>
+          <div className="flex items-start gap-4 mb-4">
+            <div className="p-3 bg-gray-100 rounded-xl">
+              <Store className="w-6 h-6 text-[var(--color-primary)]" />
+            </div>
+            <div>
+              <h2 className="text-lg font-semibold tracking-tight">Store Profile</h2>
+              <p className="text-sm text-[var(--color-muted-foreground)]">Read-only — contact the store owner to change these.</p>
+            </div>
+          </div>
+          <div className="border-t border-[var(--color-border)] pt-2">
+            <ReadOnlyRow label="Display Name" value={profile.displayName} />
+            <ReadOnlyRow label="Contact Number" value={profile.phone ?? ''} />
+            <ReadOnlyRow label="Description" value={profile.description ?? ''} />
+            <ReadOnlyRow label="Delivery Mode" value={deliveryMode} />
+            <ReadOnlyRow label="Takeaway Fee" value={serviceFee} />
+          </div>
+        </TonalCard>
+
+        <PushNotificationsCard />
+
+        <TonalCard className="border-red-100">
+          <div className="flex items-start gap-4 mb-4">
+            <div className="p-3 bg-red-50 rounded-xl">
+              <LogOut className="w-6 h-6 text-red-600" />
+            </div>
+            <div>
+              <h2 className="text-lg font-semibold tracking-tight text-red-600">Session & Security</h2>
+              <p className="text-sm text-[var(--color-muted-foreground)]">Sign out of the vendor portal.</p>
+            </div>
+          </div>
+          <div className="flex justify-end border-t border-[var(--color-border)] pt-4 mt-2">
+            <button
+              onClick={signOut}
+              disabled={signingOut}
+              className="px-6 py-2 bg-red-50 text-red-600 hover:bg-red-100 border border-red-200 text-sm font-medium rounded-lg transition-colors flex items-center justify-center min-w-[120px]"
+            >
+              {signingOut ? 'Signing out…' : 'Sign out'}
+            </button>
+          </div>
+        </TonalCard>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Route entry: picks the owner or staff settings view by role. Fetches the
+ * profile here (shared query key, so the owner view dedupes) to render the
+ * staff read-only summary and to avoid flashing the editable owner UI to staff.
+ */
+export default function SettingsPage() {
+  const { isStaff, isLoading: roleLoading } = useVendorRole();
+  const profileQ = useQuery({ queryKey: qk.profile(), queryFn: profileApi.get });
+
+  if (roleLoading || profileQ.isLoading) return <LoadingState label="Loading settings…" />;
+  if (profileQ.isError || !profileQ.data)
+    return <ErrorState error={profileQ.error} onRetry={() => profileQ.refetch()} />;
+
+  if (isStaff) return <StaffSettingsView profile={profileQ.data} />;
+  return <OwnerSettingsView />;
 }

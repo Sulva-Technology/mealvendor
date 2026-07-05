@@ -8,9 +8,18 @@ import { MetricCard, TonalCard } from '@/src/components/shared/Cards';
 import { EmptyState, ErrorState, LoadingState } from '@/src/components/shared/QueryStates';
 import { StatusChip } from '@/src/components/shared/StatusChip';
 import { settlementsApi, qk } from '@/src/lib/api/vendor';
+import { OwnerOnly } from '@/src/components/shared/OwnerOnly';
 import { formatDate, formatNaira, settlementStatusChip, prettifyEnum } from '@/src/lib/format';
 
 export default function SettlementsPage() {
+  return (
+    <OwnerOnly>
+      <SettlementsInner />
+    </OwnerOnly>
+  );
+}
+
+function SettlementsInner() {
   const query = useQuery({ queryKey: qk.settlements(), queryFn: settlementsApi.list });
   const settlements = query.data ?? [];
 

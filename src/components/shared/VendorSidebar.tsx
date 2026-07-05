@@ -5,11 +5,17 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import Image from 'next/image';
 import { navigation } from '@/src/config/navigation';
+import { useVendorRole } from '@/src/lib/hooks/useVendorRole';
 import { clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 
 export function VendorSidebar() {
   const pathname = usePathname();
+  const { isStaff } = useVendorRole();
+
+  // Settlements is owner-only (financials/payouts). Hide it from staff; the
+  // /settlements route is also guarded server-side and by <OwnerOnly>.
+  const items = navigation.filter((item) => !(isStaff && item.href === '/settlements'));
 
   return (
     <div className="flex-1 flex flex-col min-h-0 glass border-r">
@@ -27,7 +33,7 @@ export function VendorSidebar() {
       
       <div className="flex-1 overflow-y-auto px-4 py-6 space-y-1">
         <p className="px-2 text-xs font-semibold text-[var(--color-muted-foreground)] tracking-wider uppercase mb-4">Vendor Portal</p>
-        {navigation.map((item) => {
+        {items.map((item) => {
           const isActive = pathname === item.href;
           const Icon = item.icon;
           return (

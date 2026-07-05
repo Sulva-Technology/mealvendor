@@ -20,6 +20,26 @@ export interface AuthTokens {
   message?: string;
 }
 
+/** A user's membership in a vendor, with their role at that vendor. */
+export interface VendorMembership {
+  id: string;
+  vendorId: string;
+  campusId: string;
+  vendorDisplayName: string;
+  vendorSlug: string;
+  role: 'owner' | 'staff';
+  active: boolean;
+}
+
+/**
+ * Role-aware session for the current user. Returned by `GET /v1/me` (NOT
+ * `/auth/me`, which returns the generic auth user). Only the fields the vendor
+ * portal reads are typed here.
+ */
+export interface MeSession {
+  vendorMemberships: VendorMembership[];
+}
+
 export interface AcceptInviteBody {
   email: string;
   password: string;
