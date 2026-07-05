@@ -11,7 +11,7 @@ import { StatusChip } from '@/src/components/shared/StatusChip';
 import { batchesApi, ordersApi, qk } from '@/src/lib/api/vendor';
 import type { BatchDetail } from '@/src/lib/api/types';
 import { batchStatusChip, formatDate, formatDateTime, formatNaira, formatTime, orderStatusChip, orderStatusLabel, orderVendorTotalKobo, prettifyEnum } from '@/src/lib/format';
-import { batchReadyCounts, canBatchMoveToReady, canMarkReady, handoffStatusLabel, riderAssignmentLabel } from '@/src/lib/vendor-workflow';
+import { batchReadyCounts, canBatchMoveToReady, canMarkReady, handoffStatusLabel, riderAssignmentLabel, vendorOrderStage } from '@/src/lib/vendor-workflow';
 
 export default function BatchDetailPage({ params }: { params: Promise<{ batchId: string }> }) {
   const { batchId } = use(params);
@@ -32,7 +32,19 @@ export default function BatchDetailPage({ params }: { params: Promise<{ batchId:
       try {
         return await batchesApi.markOrdersReady(batchId, ids);
       } catch (error) {
-        await Promise.all(ids.map((id) => ordersApi.ready(id)));
+        // Per-order fallback. The backend state machine is accept -> preparing
+        // -> ready, so an order still in `accepted` must be started preparing
+        // before `/ready`, otherwise the transition is rejected.
+        const byId = new Map(orders.map((order) => [order.id, order]));
+        await Promise.all(
+          ids.map(async (id) => {
+            const order = byId.get(id);
+            if (order && vendorOrderStage(order.orderStatus) === 'accepted') {
+              await ordersApi.preparing(id);
+            }
+            await ordersApi.ready(id);
+          })
+        );
         return batchesApi.get(batchId);
       }
     },
