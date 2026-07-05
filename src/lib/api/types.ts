@@ -84,6 +84,7 @@ export interface OrderSummary {
   foodSubtotalKobo: number;
   deliveryFeeKobo: number;
   discountKobo: number;
+  largeOrderSurchargeKobo: number;
   totalKobo: number;
   currency: string;
   createdAt: string;
