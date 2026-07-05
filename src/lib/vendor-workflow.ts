@@ -174,3 +174,18 @@ export function canMarkReady(order: OrderSummary): boolean {
 export function canBatchMoveToReady(batch: BatchDetail | BatchSummary): boolean {
   return ['open', 'assigned', 'in_progress'].includes(batch.status);
 }
+
+/**
+ * Human-readable delivery location for a batch, derived from its orders (batch
+ * summaries carry no location). One location -> its name; several -> "First +N".
+ * Returns null when no orders are loaded (caller falls back to the batch number).
+ */
+export function batchLocationLabel(batch: BatchDetail | BatchSummary): string | null {
+  const orders = 'orders' in batch ? batch.orders ?? [] : [];
+  const names = Array.from(
+    new Set(orders.map((o) => o.locationName).filter((n): n is string => Boolean(n)))
+  );
+  if (names.length === 0) return null;
+  if (names.length === 1) return names[0];
+  return `${names[0]} +${names.length - 1}`;
+}

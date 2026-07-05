@@ -5,12 +5,13 @@ import Link from 'next/link';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Box, Check, Clock, CreditCard, Search, Truck, UserRound } from 'lucide-react';
 import { TonalCard } from '@/src/components/shared/Cards';
+import { OrderItemsInline } from '@/src/components/shared/OrderItemsInline';
 import { EmptyState, ErrorState, LoadingState } from '@/src/components/shared/QueryStates';
 import { StatusChip } from '@/src/components/shared/StatusChip';
 import { ordersApi, qk } from '@/src/lib/api/vendor';
 import type { OrderSummary } from '@/src/lib/api/types';
 import { features } from '@/src/config/features';
-import { formatNaira, formatTime, orderStatusChip, orderStatusLabel, orderVendorTotalKobo } from '@/src/lib/format';
+import { formatDate, formatNaira, formatTime, orderStatusChip, orderStatusLabel, orderVendorTotalKobo } from '@/src/lib/format';
 import {
   canRunOrderAction,
   customerSafeId,
@@ -26,26 +27,6 @@ const FILTERS = ['all', 'paid', 'accepted', 'preparing', 'ready', 'out_for_deliv
 const ACCEPTABLE = new Set(['paid', 'confirmed']);
 
 type NextAction = NonNullable<ReturnType<typeof nextOrderAction>>;
-
-function OrderItems({ id, fallback }: { id: string; fallback: string }) {
-  const { data, isLoading, isError } = useQuery({
-    queryKey: qk.order(id),
-    queryFn: () => ordersApi.get(id),
-    staleTime: 30_000,
-  });
-
-  if (isLoading) return <span className="inline-block h-4 w-32 rounded bg-gray-100 align-middle animate-pulse" />;
-  if (isError || !data || data.items.length === 0) {
-    return <span className="text-[var(--color-muted-foreground)]">{fallback}</span>;
-  }
-
-  const summary = data.items.map((item) => `${item.quantity}x ${item.itemName}`).join(', ');
-  return (
-    <span className="text-[var(--color-foreground)]" title={summary}>
-      {summary}
-    </span>
-  );
-}
 
 export default function OrdersPage() {
   const [filter, setFilter] = useState<string>('all');
@@ -225,7 +206,7 @@ export default function OrdersPage() {
                         <div className="flex items-start gap-2">
                           <Box className="mt-0.5 h-4 w-4 shrink-0 text-[var(--color-muted-foreground)]" />
                           <div className="min-w-0">
-                            <OrderItems id={order.id} fallback={order.orderNumber} />
+                            <OrderItemsInline id={order.id} fallback={order.orderNumber} />
                             <p className="text-xs text-[var(--color-muted-foreground)]">{order.orderNumber}</p>
                             {order.specialNotes && (
                               <p className="mt-1 max-w-xs truncate text-xs text-[var(--color-warning)]" title={order.specialNotes}>
@@ -239,9 +220,9 @@ export default function OrdersPage() {
                         <div className="space-y-1">
                           <span className="flex items-center gap-1.5 text-xs font-medium text-[var(--color-foreground)]">
                             <Clock className="h-3.5 w-3.5 text-[var(--color-muted-foreground)]" />
-                            {order.scheduledAt ? formatTime(order.scheduledAt) : order.deliverySlotName || formatTime(order.createdAt)}
+                            {formatDate(order.serviceDate)} · {order.scheduledAt ? formatTime(order.scheduledAt) : order.deliverySlotName || formatTime(order.createdAt)}
                           </span>
-                          <span className="block text-xs text-[var(--color-muted-foreground)]">{order.serviceDate}</span>
+                          <span className="block text-xs text-[var(--color-muted-foreground)]">Placed {formatTime(order.createdAt)}</span>
                         </div>
                       </td>
                       <td className="px-6 py-4">

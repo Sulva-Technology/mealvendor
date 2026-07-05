@@ -1,21 +1,49 @@
 'use client';
 
-import React, { use, useState } from 'react';
+import React, { use } from 'react';
 import Link from 'next/link';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, CheckCircle, Package, ShoppingBag, Truck } from 'lucide-react';
+import { ArrowLeft, CheckCircle, MapPin, ShoppingBag, Truck } from 'lucide-react';
 import { SupportAction } from '@/src/components/shared/SupportAction';
 import { TonalCard } from '@/src/components/shared/Cards';
+import { OrderItemsInline } from '@/src/components/shared/OrderItemsInline';
 import { ErrorState, LoadingState } from '@/src/components/shared/QueryStates';
 import { StatusChip } from '@/src/components/shared/StatusChip';
 import { batchesApi, ordersApi, qk } from '@/src/lib/api/vendor';
-import type { BatchDetail } from '@/src/lib/api/types';
-import { batchStatusChip, formatDate, formatDateTime, formatNaira, formatTime, orderStatusChip, orderStatusLabel, orderVendorTotalKobo, prettifyEnum } from '@/src/lib/format';
-import { batchReadyCounts, canBatchMoveToReady, canMarkReady, handoffStatusLabel, riderAssignmentLabel, vendorOrderStage } from '@/src/lib/vendor-workflow';
+import type { BatchDetail, OrderSummary } from '@/src/lib/api/types';
+import { features } from '@/src/config/features';
+import { batchStatusChip, formatDate, formatDateTime, formatTime, orderStatusChip, orderStatusLabel, prettifyEnum } from '@/src/lib/format';
+import {
+  batchLocationLabel,
+  batchReadyCounts,
+  canBatchMoveToReady,
+  handoffStatusLabel,
+  nextOrderAction,
+  orderActionLabel,
+  vendorOrderStage,
+} from '@/src/lib/vendor-workflow';
+
+type NextAction = NonNullable<ReturnType<typeof nextOrderAction>>;
+
+/** Run the legal accept -> preparing -> ready chain for one order, from wherever
+ * it currently sits. The backend rejects skipped steps, so we never jump. */
+async function advanceOrderToReady(order: OrderSummary): Promise<void> {
+  let stage = vendorOrderStage(order.orderStatus);
+  if (stage === 'new') {
+    await ordersApi.accept(order.id);
+    stage = 'accepted';
+  }
+  if (stage === 'accepted') {
+    await ordersApi.preparing(order.id);
+    stage = 'preparing';
+  }
+  if (stage === 'preparing') {
+    await ordersApi.ready(order.id);
+  }
+}
 
 export default function BatchDetailPage({ params }: { params: Promise<{ batchId: string }> }) {
   const { batchId } = use(params);
-  const [selected, setSelected] = useState<Set<string>>(new Set());
   const queryClient = useQueryClient();
 
   const query = useQuery({ queryKey: qk.batch(batchId), queryFn: () => batchesApi.get(batchId) });
@@ -24,34 +52,38 @@ export default function BatchDetailPage({ params }: { params: Promise<{ batchId:
     queryClient.setQueryData(qk.batch(batchId), updated);
     queryClient.invalidateQueries({ queryKey: qk.batches() });
     queryClient.invalidateQueries({ queryKey: ['vendor', 'orders'] });
-    setSelected(new Set());
+    queryClient.invalidateQueries({ queryKey: ['vendor', 'order'] });
   };
 
-  const markSelectedReady = useMutation({
-    mutationFn: async (ids: string[]) => {
+  // One order, one legal step forward (accept -> prepare -> ready).
+  const runStep = useMutation({
+    mutationFn: async ({ order, action }: { order: OrderSummary; action: NextAction }) => {
+      if (action === 'accept') await ordersApi.accept(order.id);
+      else if (action === 'prepare') await ordersApi.preparing(order.id);
+      else if (action === 'ready') await ordersApi.ready(order.id);
+      else await ordersApi.confirmRiderPickup(order.id);
+      return batchesApi.get(batchId);
+    },
+    onSuccess,
+  });
+
+  // Advance every not-yet-ready order all the way to ready, one legal step at a
+  // time. Falls back to per-order chaining if the batch endpoint rejects.
+  const markAllReady = useMutation({
+    mutationFn: async () => {
+      const targets = orders.filter((o) =>
+        ['new', 'accepted', 'preparing'].includes(vendorOrderStage(o.orderStatus))
+      );
+      await Promise.all(targets.map(advanceOrderToReady));
       try {
-        return await batchesApi.markOrdersReady(batchId, ids);
-      } catch (error) {
-        // Per-order fallback. The backend state machine is accept -> preparing
-        // -> ready, so an order still in `accepted` must be started preparing
-        // before `/ready`, otherwise the transition is rejected.
-        const byId = new Map(orders.map((order) => [order.id, order]));
-        await Promise.all(
-          ids.map(async (id) => {
-            const order = byId.get(id);
-            if (order && vendorOrderStage(order.orderStatus) === 'accepted') {
-              await ordersApi.preparing(id);
-            }
-            await ordersApi.ready(id);
-          })
-        );
+        return await batchesApi.readyForPickup(batchId);
+      } catch {
         return batchesApi.get(batchId);
       }
     },
     onSuccess,
   });
 
-  const markAllReady = useMutation({ mutationFn: () => batchesApi.readyForPickup(batchId), onSuccess });
   const pickup = useMutation({ mutationFn: () => batchesApi.pickup(batchId), onSuccess });
 
   if (query.isLoading) return <LoadingState label="Loading batch..." />;
@@ -60,19 +92,10 @@ export default function BatchDetailPage({ params }: { params: Promise<{ batchId:
   const batch = query.data;
   const orders = batch.orders ?? [];
   const counts = batchReadyCounts(batch);
-  const readyable = orders.filter(canMarkReady);
-  const selectedReadyable = readyable.filter((order) => selected.has(order.id));
-  const allSelected = readyable.length > 0 && selectedReadyable.length === readyable.length;
-  const pending = markSelectedReady.isPending || markAllReady.isPending || pickup.isPending;
-  const mutationError = markSelectedReady.error || markAllReady.error || pickup.error;
-
-  const toggleOne = (id: string) =>
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
+  const location = batchLocationLabel(batch);
+  const pending = runStep.isPending || markAllReady.isPending || pickup.isPending;
+  const mutationError = runStep.error || markAllReady.error || pickup.error;
+  const hasReadyable = orders.some((o) => ['new', 'accepted', 'preparing'].includes(vendorOrderStage(o.orderStatus)));
 
   return (
     <div className="space-y-6 pb-20 md:pb-0">
@@ -82,16 +105,20 @@ export default function BatchDetailPage({ params }: { params: Promise<{ batchId:
             <ArrowLeft className="h-5 w-5 text-[var(--color-muted-foreground)]" />
           </Link>
           <div>
-            <h1 className="text-2xl font-semibold tracking-tight text-[var(--color-foreground)]">Batch {batch.batchNumber}</h1>
+            <h1 className="flex items-center gap-2 text-2xl font-semibold tracking-tight text-[var(--color-foreground)]">
+              {location ? <MapPin className="h-5 w-5 text-[var(--color-primary)]" /> : null}
+              {location || `Batch ${batch.batchNumber}`}
+            </h1>
             <p className="text-sm font-medium text-[var(--color-muted-foreground)]">
-              {formatDate(batch.serviceDate)} / Pickup {batch.pickupTime ? formatTime(batch.pickupTime) : formatTime(batch.cutoffAt)}
+              {formatDate(batch.serviceDate)} · Pickup {batch.pickupTime ? formatTime(batch.pickupTime) : formatTime(batch.cutoffAt)} · Created {formatTime(batch.createdAt)}
             </p>
+            <p className="font-mono text-xs text-[var(--color-muted-foreground)]">{batch.batchNumber}</p>
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <StatusChip status={batchStatusChip(batch.status)} label={prettifyEnum(batch.status)} />
           <SupportAction subjectType="batch" subjectId={batch.id} defaultCategory="rider_delay" label="Report issue" />
-          {canBatchMoveToReady(batch) && (
+          {canBatchMoveToReady(batch) && hasReadyable && (
             <button
               onClick={() => markAllReady.mutate()}
               disabled={pending}
@@ -114,19 +141,6 @@ export default function BatchDetailPage({ params }: { params: Promise<{ batchId:
         </div>
       </div>
 
-      {selectedReadyable.length > 0 && (
-        <div className="flex items-center justify-between rounded-lg border border-[var(--color-primary)]/30 bg-[var(--color-primary)]/5 px-4 py-3">
-          <p className="text-sm font-medium">{selectedReadyable.length} valid order(s) selected</p>
-          <button
-            onClick={() => markSelectedReady.mutate(selectedReadyable.map((order) => order.id))}
-            disabled={pending}
-            className="rounded-lg bg-[var(--color-primary)] px-4 py-2 text-sm font-medium text-white disabled:opacity-60"
-          >
-            Mark selected ready
-          </button>
-        </div>
-      )}
-
       {mutationError && <p className="text-sm text-[var(--color-error)]">{(mutationError as Error).message}</p>}
 
       <div className="grid gap-6 xl:grid-cols-3">
@@ -139,59 +153,44 @@ export default function BatchDetailPage({ params }: { params: Promise<{ batchId:
             {orders.length === 0 ? (
               <p className="p-6 text-sm text-[var(--color-muted-foreground)]">No orders in this batch yet.</p>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[900px] text-left text-sm">
-                  <thead className="border-b border-[var(--color-border)] bg-gray-50/50 text-xs uppercase text-[var(--color-muted-foreground)]">
-                    <tr>
-                      <th className="w-10 px-4 py-3">
-                        <input
-                          type="checkbox"
-                          checked={allSelected}
-                          disabled={readyable.length === 0}
-                          onChange={() => setSelected(allSelected ? new Set() : new Set(readyable.map((order) => order.id)))}
-                          className="h-4 w-4 accent-[var(--color-primary)] disabled:opacity-40"
-                        />
-                      </th>
-                      <th className="px-4 py-3 font-medium">Order</th>
-                      <th className="px-4 py-3 font-medium">Status</th>
-                      <th className="px-4 py-3 font-medium">Rider</th>
-                      <th className="px-4 py-3 font-medium">Total</th>
-                      <th className="px-4 py-3 font-medium"></th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-[var(--color-border)]">
-                    {orders.map((order) => (
-                      <tr key={order.id} className="hover:bg-gray-50/50">
-                        <td className="px-4 py-4">
-                          <input
-                            type="checkbox"
-                            checked={selected.has(order.id)}
-                            disabled={!canMarkReady(order)}
-                            onChange={() => toggleOne(order.id)}
-                            className="h-4 w-4 accent-[var(--color-primary)] disabled:opacity-30"
-                          />
-                        </td>
-                        <td className="px-4 py-4">
-                          <Link href={`/orders/${order.id}`} className="font-mono text-sm font-semibold text-[var(--color-primary)] hover:underline">
-                            {order.orderNumber}
-                          </Link>
-                          <p className="text-xs text-[var(--color-muted-foreground)]">{order.locationName || 'No location'}</p>
-                        </td>
-                        <td className="px-4 py-4">
-                          <StatusChip status={orderStatusChip(order.orderStatus)} label={orderStatusLabel(order.orderStatus)} />
-                        </td>
-                        <td className="px-4 py-4 text-xs text-[var(--color-muted-foreground)]">{riderAssignmentLabel(order)}</td>
-                        <td className="px-4 py-4 font-medium tabular-nums">{formatNaira(orderVendorTotalKobo(order))}</td>
-                        <td className="px-4 py-4 text-right">
-                          <Link href={`/orders/${order.id}`} className="text-sm font-medium text-[var(--color-primary)] hover:underline">
-                            Manage
-                          </Link>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              <ul className="divide-y divide-[var(--color-border)]">
+                {orders.map((order) => {
+                  const rawAction = nextOrderAction(order.orderStatus);
+                  const action = rawAction === 'confirm_pickup' && !features.orderHandoffConfirm ? null : rawAction;
+                  return (
+                    <li key={order.id} className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="min-w-0">
+                        <p className="font-medium text-[var(--color-foreground)]">
+                          <OrderItemsInline id={order.id} fallback={order.orderNumber} />
+                        </p>
+                        <p className="mt-0.5 flex items-center gap-1 text-xs text-[var(--color-muted-foreground)]">
+                          <MapPin className="h-3 w-3" />
+                          {order.locationName || 'No location'}
+                          <span className="text-[var(--color-border)]">·</span>
+                          <span className="font-mono">{order.orderNumber}</span>
+                        </p>
+                        {order.specialNotes && (
+                          <p className="mt-1 truncate text-xs text-[var(--color-warning)]" title={order.specialNotes}>
+                            Note: {order.specialNotes}
+                          </p>
+                        )}
+                      </div>
+                      <div className="flex shrink-0 items-center gap-3">
+                        <StatusChip status={orderStatusChip(order.orderStatus)} label={orderStatusLabel(order.orderStatus)} />
+                        {action && (
+                          <button
+                            onClick={() => runStep.mutate({ order, action })}
+                            disabled={pending}
+                            className="rounded-lg bg-[var(--color-primary)] px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-[var(--color-primary)]/90 disabled:opacity-50"
+                          >
+                            {runStep.isPending ? 'Working...' : orderActionLabel(action)}
+                          </button>
+                        )}
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
             )}
           </TonalCard>
         </div>
@@ -200,7 +199,10 @@ export default function BatchDetailPage({ params }: { params: Promise<{ batchId:
           <TonalCard>
             <h3 className="mb-4 text-sm font-semibold text-[var(--color-foreground)]">Batch summary</h3>
             <div className="space-y-3 text-sm">
-              <Summary label="Batch ID" value={batch.id.slice(0, 12) + '...'} />
+              <Summary label="Location" value={location || '—'} />
+              <Summary label="Delivery date" value={formatDate(batch.serviceDate)} />
+              <Summary label="Pickup time" value={batch.pickupTime ? formatTime(batch.pickupTime) : formatTime(batch.cutoffAt)} />
+              <Summary label="Created" value={formatDateTime(batch.createdAt)} />
               <Summary label="Orders" value={String(batch.orderCount)} />
               <Summary label="Ready" value={String(counts.ready)} />
               <Summary label="Not ready" value={String(counts.notReady)} />
