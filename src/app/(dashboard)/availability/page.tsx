@@ -158,7 +158,7 @@ export default function AvailabilityPage() {
               <StatusChip status={storeState === 'open' ? 'success' : storeState === 'sold_out_today' ? 'error' : 'default'} label={storeState === 'sold_out_today' ? 'Sold out for today' : storeState === 'paused' ? 'Temporarily paused' : storeState === 'open' ? 'Open' : 'Closed'} />
             </div>
             <p className="text-sm text-[var(--color-muted-foreground)]">
-              Store state endpoint controls global open/closed, pause, cutoff, max daily orders, and unavailable dates.
+              Set whether you&apos;re open, closed, temporarily paused, or sold out for today.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -185,7 +185,7 @@ export default function AvailabilityPage() {
         </div>
         {stateQuery.isError && (
           <p className="mt-3 text-xs text-[var(--color-muted-foreground)]">
-            Backend endpoint `GET/PATCH /vendor/availability/state` is missing or unavailable. Schedule toggles below still use live `/vendor/availability`.
+            Store open/closed controls are temporarily unavailable. Your weekly schedule below still saves normally.
           </p>
         )}
       </TonalCard>
@@ -270,11 +270,11 @@ export default function AvailabilityPage() {
                 </div>
                 <div className="flex justify-between gap-4">
                   <span className="text-[var(--color-muted-foreground)]">Cutoff time</span>
-                  <span className="font-medium">{stateQuery.data?.cutoffTime ?? 'Backend not set'}</span>
+                  <span className="font-medium">{stateQuery.data?.cutoffTime ?? 'Not set'}</span>
                 </div>
                 <div className="flex justify-between gap-4">
                   <span className="text-[var(--color-muted-foreground)]">Max orders/day</span>
-                  <span className="font-medium">{stateQuery.data?.maxOrdersPerDay ?? 'Backend not set'}</span>
+                  <span className="font-medium">{stateQuery.data?.maxOrdersPerDay ?? 'Not set'}</span>
                 </div>
                 <div className="flex justify-between gap-4">
                   <span className="text-[var(--color-muted-foreground)]">Unavailable dates</span>

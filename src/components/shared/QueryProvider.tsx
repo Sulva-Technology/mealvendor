@@ -9,11 +9,12 @@ export function QueryProvider({ children }: { children: React.ReactNode }) {
       new QueryClient({
         defaultOptions: {
           queries: {
-            // Render's free tier can be slow/cold; give queries room and avoid
-            // hammering on focus.
+            // Render's free tier can be slow/cold; give queries room. Refetch on
+            // focus so a vendor returning to the tab sees fresh orders/status
+            // without a manual reload (staleTime still throttles the calls).
             staleTime: 30_000,
             retry: 1,
-            refetchOnWindowFocus: false,
+            refetchOnWindowFocus: true,
           },
         },
       })

@@ -10,6 +10,7 @@ import { ErrorState, LoadingState } from '@/src/components/shared/QueryStates';
 import { StatusChip } from '@/src/components/shared/StatusChip';
 import { ordersApi, qk } from '@/src/lib/api/vendor';
 import type { OrderDetail } from '@/src/lib/api/types';
+import { features } from '@/src/config/features';
 import { formatDateTime, formatNaira, orderStatusChip, orderStatusLabel, orderVendorTotalKobo, prettifyEnum } from '@/src/lib/format';
 import {
   canRunOrderAction,
@@ -59,7 +60,9 @@ export default function OrderDetailPage({ params }: { params: Promise<{ orderId:
   if (query.isError || !query.data) return <ErrorState error={query.error} onRetry={() => query.refetch()} />;
 
   const order = query.data;
-  const action = nextOrderAction(order.orderStatus);
+  const rawAction = nextOrderAction(order.orderStatus);
+  // Hide rider-pickup confirm until the backend ships the endpoint.
+  const action = rawAction === 'confirm_pickup' && !features.orderHandoffConfirm ? null : rawAction;
   const stage = vendorOrderStage(order.orderStatus);
   const pending = runAction.isPending;
 
@@ -147,7 +150,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ orderId:
               <Info icon={Clock} label="Scheduled" value={order.scheduledAt ? formatDateTime(order.scheduledAt) : order.deliverySlotName || order.serviceDate} />
               <Info icon={MapPin} label="Delivery/pickup type" value={`${prettifyEnum(order.deliveryMode)} / ${order.locationName || 'No location'}`} />
               <Info icon={Truck} label="Rider" value={order.riderName || riderAssignmentLabel(order)} detail={order.riderContact || 'Contact not provided'} />
-              <Info icon={ShieldCheck} label="Handoff" value={handoffStatusLabel(order)} detail={order.handoffCode ? `Code ${order.handoffCode}` : 'No handoff code from backend'} />
+              <Info icon={ShieldCheck} label="Handoff" value={handoffStatusLabel(order)} detail={order.handoffCode ? `Code ${order.handoffCode}` : 'No handoff code yet'} />
             </div>
             <div className="mt-4 grid gap-3 rounded-lg border border-[var(--color-border)] bg-gray-50 p-4 text-sm sm:grid-cols-3">
               <div>
@@ -171,7 +174,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ orderId:
             <TonalCard className="border-[var(--color-primary)]/20 bg-[var(--color-primary)]/5 shadow-sm">
               <h3 className="mb-2 text-sm font-semibold text-[var(--color-primary)]">Next vendor action</h3>
               <p className="mb-4 text-sm text-[var(--color-foreground)]">
-                Current stage: {vendorOrderStageLabel(stage)}. Invalid transitions are blocked.
+                Current stage: {vendorOrderStageLabel(stage)}.
               </p>
               <button
                 onClick={() => runAction.mutate({ order, action })}
@@ -200,21 +203,23 @@ export default function OrderDetailPage({ params }: { params: Promise<{ orderId:
             </div>
           </TonalCard>
 
-          <TonalCard>
-            <h3 className="mb-3 text-sm font-semibold text-[var(--color-foreground)]">Handoff issue actions</h3>
-            <div className="flex flex-wrap gap-2">
-              {ISSUE_ACTIONS.map((issue) => (
-                <SupportAction
-                  key={issue.label}
-                  subjectType="rider_handoff"
-                  subjectId={order.id}
-                  defaultCategory={issue.category}
-                  label={issue.label}
-                  context={`${issue.label} for order ${order.orderNumber}`}
-                />
-              ))}
-            </div>
-          </TonalCard>
+          {features.supportIssues && (
+            <TonalCard>
+              <h3 className="mb-3 text-sm font-semibold text-[var(--color-foreground)]">Handoff issue actions</h3>
+              <div className="flex flex-wrap gap-2">
+                {ISSUE_ACTIONS.map((issue) => (
+                  <SupportAction
+                    key={issue.label}
+                    subjectType="rider_handoff"
+                    subjectId={order.id}
+                    defaultCategory={issue.category}
+                    label={issue.label}
+                    context={`${issue.label} for order ${order.orderNumber}`}
+                  />
+                ))}
+              </div>
+            </TonalCard>
+          )}
         </div>
       </div>
     </div>

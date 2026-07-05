@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import Link from 'next/link';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Archive, Clock, ImageIcon, Lock, Plus, Search, UtensilsCrossed } from 'lucide-react';
+import { Clock, ImageIcon, Lock, Plus, Search, UtensilsCrossed } from 'lucide-react';
 import { TonalCard } from '@/src/components/shared/Cards';
 import { EmptyState, ErrorState, LoadingState } from '@/src/components/shared/QueryStates';
 import { StatusChip } from '@/src/components/shared/StatusChip';
@@ -122,7 +122,7 @@ export default function MenuPage() {
                 <div className="grid grid-cols-2 gap-2 text-xs">
                   <Meta label="Prep" value={item.prepTimeMinutes ? `${item.prepTimeMinutes} min` : 'Not set'} icon={Clock} />
                   <Meta label="Today stock" value={rows.length ? String(remaining) : 'No row'} />
-                  <Meta label="Daily limit" value={item.dailyQuantityLimit ? String(item.dailyQuantityLimit) : 'Backend not set'} />
+                  <Meta label="Daily limit" value={item.dailyQuantityLimit ? String(item.dailyQuantityLimit) : 'Not set'} />
                   <Meta label="Dietary" value={item.dietaryTags?.length ? item.dietaryTags.join(', ') : 'None'} />
                 </div>
 
@@ -149,11 +149,6 @@ export default function MenuPage() {
                     </Link>
                   </div>
                 </div>
-
-                <p className="mt-3 flex items-start gap-1.5 text-xs text-[var(--color-muted-foreground)]">
-                  <Archive className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                  Backend must enforce unavailable/sold-out checkout rejection.
-                </p>
               </TonalCard>
             );
           })}

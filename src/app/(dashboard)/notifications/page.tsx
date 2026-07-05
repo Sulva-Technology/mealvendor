@@ -25,7 +25,7 @@ function eventLabel(eventType: string) {
 
 export default function NotificationsPage() {
   const queryClient = useQueryClient();
-  const query = useQuery({ queryKey: qk.notifications(), queryFn: notificationsApi.list });
+  const query = useQuery({ queryKey: qk.notifications(), queryFn: notificationsApi.list, refetchInterval: 60_000 });
   const notifications = query.data ?? [];
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: qk.notifications() });

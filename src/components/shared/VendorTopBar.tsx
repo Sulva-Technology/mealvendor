@@ -21,6 +21,8 @@ export function VendorTopBar() {
     queryKey: qk.notifications(),
     queryFn: notificationsApi.list,
     staleTime: 60_000,
+    // Keep the unread badge live while the tab is open.
+    refetchInterval: 60_000,
   });
 
   const unread = notifications?.filter((n) => !n.readAt).length ?? 0;

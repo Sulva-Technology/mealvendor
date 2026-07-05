@@ -187,6 +187,16 @@ function InventoryRow({ row, date }: { row: VendorInventory; date: string }) {
   const queryClient = useQueryClient();
   const [qty, setQty] = useState<string>(String(row.quantityTotal));
   const [adjusting, setAdjusting] = useState(false);
+
+  // Re-sync the editable field when the row's total changes server-side (e.g.
+  // after an adjustment), so a stale value can't overwrite the new total. Uses
+  // the render-time "reset on prop change" pattern (no effect, no clobbering).
+  const [prevTotal, setPrevTotal] = useState(row.quantityTotal);
+  if (row.quantityTotal !== prevTotal) {
+    setPrevTotal(row.quantityTotal);
+    setQty(String(row.quantityTotal));
+  }
+
   const dirty = Number(qty) !== row.quantityTotal;
 
   const save = useMutation({
@@ -251,6 +261,11 @@ function InventoryRow({ row, date }: { row: VendorInventory; date: string }) {
             context={`Inventory issue for ${row.menuItemName} / ${row.deliverySlotName}`}
           />
         </div>
+        {save.isError && (
+          <p className="mt-1.5 text-right text-xs text-[var(--color-error)]">
+            {(save.error as Error).message}
+          </p>
+        )}
         {adjusting && <AdjustModal row={row} date={date} onClose={() => setAdjusting(false)} />}
       </td>
     </tr>

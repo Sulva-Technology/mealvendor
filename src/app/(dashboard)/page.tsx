@@ -13,7 +13,7 @@ import { formatNaira, orderStatusChip, orderStatusLabel, todayIso, prettifyEnum,
 export default function DashboardHome() {
   const today = todayIso();
 
-  const ordersQ = useQuery({ queryKey: qk.orders({ date: today }), queryFn: () => ordersApi.list({ date: today }) });
+  const ordersQ = useQuery({ queryKey: qk.orders({ date: today }), queryFn: () => ordersApi.list({ date: today }), refetchInterval: 45_000 });
   const settlementsQ = useQuery({ queryKey: qk.settlements(), queryFn: settlementsApi.list });
   const batchesQ = useQuery({ queryKey: qk.batches(), queryFn: batchesApi.list });
   const profileQ = useQuery({ queryKey: qk.profile(), queryFn: profileApi.get, staleTime: 5 * 60_000 });

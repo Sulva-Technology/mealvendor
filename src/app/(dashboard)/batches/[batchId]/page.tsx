@@ -205,7 +205,7 @@ export default function BatchDetailPage({ params }: { params: Promise<{ batchId:
             </div>
             <p className="text-sm font-medium capitalize text-[var(--color-foreground)]">{batch.deliveryMode?.replace(/_/g, ' ')}</p>
             <p className="mt-1 text-xs text-[var(--color-muted-foreground)]">
-              Handoff code: {batch.handoffCode || 'Not provided by backend'}
+              Handoff code: {batch.handoffCode || 'Not provided yet'}
             </p>
           </TonalCard>
         </div>

@@ -10,7 +10,7 @@ import { useAuthStore } from '@/src/lib/auth/session';
 import { ApiError } from '@/src/lib/api/client';
 
 const TERMS_URL = process.env.NEXT_PUBLIC_TERMS_URL || 'https://mealdirectly.com/terms';
-const PRIVACY_URL = process.env.NEXT_PUBLIC_PRIVACY_URL || 'https://mealdirect.com/privacy';
+const PRIVACY_URL = process.env.NEXT_PUBLIC_PRIVACY_URL || 'https://mealdirectly.com/privacy';
 
 export default function LoginPage() {
   const [loading, setLoading] = useState(false);
@@ -151,6 +151,13 @@ export default function LoginPage() {
             Forgot password?
           </Link>
         </form>
+
+        <p className="text-center text-sm text-[var(--color-muted-foreground)]">
+          New vendor?{' '}
+          <Link href="/signup" className="font-medium text-[var(--color-primary)] hover:underline">
+            Create an account
+          </Link>
+        </p>
 
         <p className="text-center text-xs text-[var(--color-muted-foreground)] pt-2">
           By signing in, you agree to our{' '}

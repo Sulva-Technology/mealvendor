@@ -7,6 +7,7 @@ import { Modal } from './Modal';
 import { supportApi } from '@/src/lib/api/vendor';
 import type { SupportIssueBody } from '@/src/lib/api/types';
 import { SUPPORT_CATEGORIES, supportCategoryLabel } from '@/src/lib/vendor-workflow';
+import { features } from '@/src/config/features';
 
 export function SupportAction({
   subjectType,
@@ -35,6 +36,10 @@ export function SupportAction({
       }),
     onSuccess: () => setOpen(false),
   });
+
+  // Hidden until the backend exposes POST /vendor/support/issues; otherwise the
+  // modal would always fail on submit. (After hooks — rules-of-hooks.)
+  if (!features.supportIssues) return null;
 
   return (
     <>
@@ -81,10 +86,6 @@ export function SupportAction({
               <span>{(create.error as Error).message}</span>
             </div>
           )}
-
-          <p className="text-xs text-[var(--color-muted-foreground)]">
-            Requires backend endpoint `POST /vendor/support/issues`. Until backend ships it, submit can return API error.
-          </p>
 
           <div className="flex justify-end gap-2">
             <button

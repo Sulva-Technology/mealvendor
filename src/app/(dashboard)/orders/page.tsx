@@ -9,6 +9,7 @@ import { EmptyState, ErrorState, LoadingState } from '@/src/components/shared/Qu
 import { StatusChip } from '@/src/components/shared/StatusChip';
 import { ordersApi, qk } from '@/src/lib/api/vendor';
 import type { OrderSummary } from '@/src/lib/api/types';
+import { features } from '@/src/config/features';
 import { formatNaira, formatTime, orderStatusChip, orderStatusLabel, orderVendorTotalKobo } from '@/src/lib/format';
 import {
   canRunOrderAction,
@@ -55,6 +56,9 @@ export default function OrdersPage() {
   const query = useQuery({
     queryKey: qk.orders({ status: filter }),
     queryFn: () => ordersApi.list(filter === 'all' ? {} : { status: filter }),
+    // Live board: poll while the tab is visible so new paid orders appear
+    // without a manual reload. react-query pauses this in background tabs.
+    refetchInterval: 45_000,
   });
 
   const orders = (query.data ?? []).filter((order) => {
@@ -201,7 +205,9 @@ export default function OrdersPage() {
               <tbody className="divide-y divide-[var(--color-border)]">
                 {orders.map((order) => {
                   const canSelect = ACCEPTABLE.has(order.orderStatus);
-                  const action = nextOrderAction(order.orderStatus);
+                  const rawAction = nextOrderAction(order.orderStatus);
+                  // Hide rider-pickup confirm until the backend ships the endpoint.
+                  const action = rawAction === 'confirm_pickup' && !features.orderHandoffConfirm ? null : rawAction;
                   const stage = vendorOrderStage(order.orderStatus);
                   return (
                     <tr key={order.id} className="transition-colors hover:bg-gray-50/50">
