@@ -61,3 +61,18 @@ export async function revokePushToken(): Promise<boolean> {
   const messaging = getMessaging(getFirebaseApp());
   return deleteToken(messaging);
 }
+
+/**
+ * Subscribe to foreground pushes (tab focused). The service worker's
+ * onBackgroundMessage only fires while the app is backgrounded, so without this
+ * a vendor keeping the dashboard open would see nothing. Returns an unsubscribe
+ * fn (a no-op when messaging is unsupported).
+ */
+export async function onForegroundMessage(
+  handler: (payload: import('firebase/messaging').MessagePayload) => void
+): Promise<() => void> {
+  if (!(await messagingIsSupported())) return () => {};
+  const { getMessaging, onMessage } = await import('firebase/messaging');
+  const messaging = getMessaging(getFirebaseApp());
+  return onMessage(messaging, handler);
+}

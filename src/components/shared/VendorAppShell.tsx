@@ -7,6 +7,8 @@ import { VendorMobileBottomNav } from './VendorMobileBottomNav';
 import { InstallPrompt } from './InstallPrompt';
 import { AppUpdatePrompt } from './AppUpdatePrompt';
 import { PendingApprovalBanner } from './PendingApprovalBanner';
+import { PushForeground } from './PushForeground';
+import { PushToaster } from './PushToaster';
 
 export function VendorAppShell({ children }: { children: React.ReactNode }) {
   return (
@@ -32,6 +34,10 @@ export function VendorAppShell({ children }: { children: React.ReactNode }) {
       {/* Mobile Bottom Nav */}
       <VendorMobileBottomNav />
       
+      {/* Foreground push handling (toast/badge while tab focused) */}
+      <PushForeground />
+      <PushToaster />
+
       {/* PWA Install Prompt */}
       <InstallPrompt />
       <AppUpdatePrompt />
