@@ -205,8 +205,13 @@ export interface OrderFilters {
 }
 
 export const ordersApi = {
-  list: (filters: OrderFilters = {}) =>
-    fetchApi<OrderSummary[]>(`/vendor/orders${qs({ ...filters })}`),
+  // Expired orders are unpaid orders whose payment window lapsed — they never
+  // reach the vendor for fulfilment, so hide them from every vendor-facing list
+  // (dashboard + orders board). Filtered here so all consumers stay consistent.
+  list: async (filters: OrderFilters = {}) => {
+    const orders = await fetchApi<OrderSummary[]>(`/vendor/orders${qs({ ...filters })}`);
+    return orders.filter((order) => order.orderStatus !== 'expired');
+  },
   get: (id: string) => fetchApi<OrderDetail>(`/vendor/orders/${id}`),
   accept: (id: string) => fetchApi<OrderDetail>(`/vendor/orders/${id}/accept`, { method: 'POST' }),
   prepare: (id: string) => fetchApi<OrderDetail>(`/vendor/orders/${id}/prepare`, { method: 'POST' }),
