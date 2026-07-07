@@ -37,12 +37,15 @@ import type {
   UpdateMenuItemBody,
   UpdateStoreAvailabilityBody,
   UpdateVendorProfileBody,
+  CreateVendorSoupOptionBody,
+  UpdateVendorSoupOptionBody,
   UpsertPayoutAccountBody,
   VendorInventory,
   VendorMenuItem,
   VendorPayoutAccount,
   VendorProfile,
   VendorReview,
+  VendorSoupOption,
 } from './types';
 
 // Availability + menu-item schedule share the same write DTO: ONLY
@@ -178,6 +181,7 @@ export const qk = {
   menuItems: () => ['vendor', 'menu-items'] as const,
   menuItem: (id: string) => ['vendor', 'menu-item', id] as const,
   menuMetadata: () => ['vendor', 'menu-metadata'] as const,
+  soupOptions: () => ['vendor', 'soup-options'] as const,
   menuSchedules: (id: string) => ['vendor', 'menu-item', id, 'schedules'] as const,
   batches: () => ['vendor', 'batches'] as const,
   batch: (id: string) => ['vendor', 'batch', id] as const,
@@ -238,6 +242,14 @@ export const menuApi = {
     fetchApi<VendorMenuItem>(`/vendor/menu-items/${id}/activate`, { method: 'POST' }),
   deactivate: (id: string) =>
     fetchApi<VendorMenuItem>(`/vendor/menu-items/${id}/deactivate`, { method: 'POST' }),
+  /**
+   * TODO backend contract: DELETE /vendor/menu-items/:id
+   * Hard-deletes a menu item. Backend endpoint not yet confirmed — added per REST
+   * convention; may 404 until the backend ships it. Historical orders keep their
+   * snapshot, so this only affects future ordering.
+   */
+  remove: (id: string) =>
+    fetchApi<void>(`/vendor/menu-items/${id}`, { method: 'DELETE' }),
   requestImageUploadUrl: (id: string, body: MenuItemImageUploadUrlBody) =>
     fetchApi<MenuItemImageUploadTarget>(`/vendor/menu-items/${id}/image/upload-url`, {
       method: 'POST',
@@ -254,6 +266,21 @@ export const menuApi = {
     fetchApi<MenuItemSchedule[]>(`/vendor/menu-items/${id}/schedules`, {
       method: 'PUT',
       body: JSON.stringify({ entries: entries.map(toSlotDayEntry) }),
+    }),
+};
+
+// --- Soup options (shared per-vendor list reused by requiresSoup menu items) ---
+export const soupApi = {
+  list: () => fetchApi<VendorSoupOption[]>('/vendor/soup-options'),
+  create: (body: CreateVendorSoupOptionBody) =>
+    fetchApi<VendorSoupOption>('/vendor/soup-options', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  update: (id: string, body: UpdateVendorSoupOptionBody) =>
+    fetchApi<VendorSoupOption>(`/vendor/soup-options/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
     }),
 };
 

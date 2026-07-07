@@ -184,6 +184,7 @@ export default function EditMenuItemPage({ params }: { params: Promise<{ itemId:
     unitTypeId: '',
     categoryId: '',
     priceNaira: '',
+    requiresSoup: false,
   });
   const [saved, setSaved] = useState(false);
 
@@ -201,6 +202,7 @@ export default function EditMenuItemPage({ params }: { params: Promise<{ itemId:
         unitTypeId: it.unitTypeId,
         categoryId: it.categoryId ?? '',
         priceNaira: String(it.priceKobo / 100),
+        requiresSoup: it.requiresSoup ?? false,
       });
     }
   }, [itemQ.data]);
@@ -220,6 +222,7 @@ export default function EditMenuItemPage({ params }: { params: Promise<{ itemId:
         unitTypeId: form.unitTypeId,
         categoryId: form.categoryId || undefined,
         priceKobo: Math.round(Number(form.priceNaira) * 100),
+        requiresSoup: form.requiresSoup,
       };
       if (!isNew) {
         // Preserve the current imageUrl so the backend doesn't clear it
@@ -491,6 +494,28 @@ export default function EditMenuItemPage({ params }: { params: Promise<{ itemId:
                     )}
                   </div>
                 )}
+              </div>
+
+              <div className="rounded-lg border border-[var(--color-border)] bg-gray-50 p-3">
+                <label className="flex items-start gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={form.requiresSoup}
+                    onChange={(e) => setForm((f) => ({ ...f, requiresSoup: e.target.checked }))}
+                    className="mt-0.5 h-4 w-4 rounded border-[var(--color-border)] text-[var(--color-primary)] focus:ring-[var(--color-primary)]/20"
+                  />
+                  <span className="text-sm">
+                    <span className="font-medium text-[var(--color-foreground)]">Requires a soup selection</span>
+                    <span className="block text-[var(--color-muted-foreground)]">
+                      Customers must pick one of your soups (e.g. for eba, semo, pounded yam). Manage the soup
+                      list under{' '}
+                      <Link href="/menu/soups" className="text-[var(--color-primary)] hover:underline">
+                        Menu → Soups
+                      </Link>
+                      .
+                    </span>
+                  </span>
+                </label>
               </div>
             </form>
           </TonalCard>

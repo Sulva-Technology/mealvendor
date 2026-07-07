@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import Link from 'next/link';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Clock, ImageIcon, Lock, Plus, Search, UtensilsCrossed } from 'lucide-react';
+import { Clock, ImageIcon, Lock, Plus, Search, Soup, Trash2, UtensilsCrossed } from 'lucide-react';
 import { TonalCard } from '@/src/components/shared/Cards';
 import { EmptyState, ErrorState, LoadingState } from '@/src/components/shared/QueryStates';
 import { StatusChip } from '@/src/components/shared/StatusChip';
@@ -23,6 +23,11 @@ export default function MenuPage() {
 
   const toggle = useMutation({
     mutationFn: ({ id, active }: { id: string; active: boolean }) => (active ? menuApi.deactivate(id) : menuApi.activate(id)),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: qk.menuItems() }),
+  });
+
+  const remove = useMutation({
+    mutationFn: (id: string) => menuApi.remove(id),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: qk.menuItems() }),
   });
 
@@ -51,6 +56,14 @@ export default function MenuPage() {
           <h1 className="text-2xl font-semibold tracking-tight text-[var(--color-foreground)]">Menu Items</h1>
           <p className="text-sm text-[var(--color-muted-foreground)]">Manage dishes, pricing, availability, images, and daily stock state.</p>
         </div>
+        <div className="flex items-center gap-2">
+          <Link
+            href="/menu/soups"
+            className="flex items-center gap-2 rounded-lg border border-[var(--color-border)] px-4 py-2 text-sm font-medium text-[var(--color-foreground)] transition-colors hover:bg-gray-50"
+          >
+            <Soup className="h-4 w-4" />
+            Soups
+          </Link>
         {isApproved ? (
           <Link
             href="/menu/new/edit"
@@ -65,6 +78,7 @@ export default function MenuPage() {
             Add item
           </span>
         )}
+        </div>
       </div>
 
       <div className="relative max-w-md">
@@ -78,8 +92,8 @@ export default function MenuPage() {
         />
       </div>
 
-      {(toggle.isError || soldOut.isError) && (
-        <p className="text-sm text-[var(--color-error)]">{((toggle.error || soldOut.error) as Error).message}</p>
+      {(toggle.isError || soldOut.isError || remove.isError) && (
+        <p className="text-sm text-[var(--color-error)]">{((toggle.error || soldOut.error || remove.error) as Error).message}</p>
       )}
 
       {query.isLoading ? (
@@ -147,6 +161,20 @@ export default function MenuPage() {
                     <Link href={`/menu/${item.id}/edit`} className="rounded-lg bg-[var(--color-primary)] px-3 py-1.5 text-xs font-medium text-white">
                       Edit
                     </Link>
+                    <button
+                      onClick={() => {
+                        if (window.confirm(`Delete "${item.name}"? This cannot be undone. Historical orders keep their snapshot.`)) {
+                          remove.mutate(item.id);
+                        }
+                      }}
+                      disabled={(remove.isPending && remove.variables === item.id) || !isApproved}
+                      title={!isApproved ? 'Available once your vendor account is approved' : 'Delete item'}
+                      aria-label={`Delete ${item.name}`}
+                      className="flex items-center gap-1 rounded-lg border border-[var(--color-error)]/30 px-3 py-1.5 text-xs font-medium text-[var(--color-error)] transition-colors hover:bg-[var(--color-error)]/5 disabled:opacity-50"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                      Delete
+                    </button>
                   </div>
                 </div>
               </TonalCard>

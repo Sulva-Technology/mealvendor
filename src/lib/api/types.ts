@@ -111,6 +111,8 @@ export interface OrderItem {
   unitPriceKobo: number;
   quantity: number;
   lineTotalKobo: number;
+  soupOptionId?: string | null;
+  soupName?: string | null;
 }
 
 export interface OrderDetail extends OrderSummary {
@@ -130,6 +132,7 @@ export interface VendorMenuItem {
   description?: string | null;
   imageUrl?: string | null;
   priceKobo: number;
+  requiresSoup: boolean;
   active: boolean;
   prepTimeMinutes?: number | null;
   dailyQuantityLimit?: number | null;
@@ -155,6 +158,8 @@ export interface UnitType {
   code: string;
   displayName: string;
   countsTowardSpoonLimit: boolean;
+  triggersTakeawayFee: boolean;
+  maxQuantity: number | null;
   active: boolean;
 }
 
@@ -170,6 +175,7 @@ export interface CreateMenuItemBody {
   description?: string;
   imageUrl?: string;
   priceKobo: number;
+  requiresSoup?: boolean;
   displayOrder?: number;
 }
 
@@ -177,6 +183,28 @@ export type UpdateMenuItemBody = Partial<CreateMenuItemBody>;
 
 export interface CreateMenuCategoryBody {
   name: string;
+  displayOrder?: number;
+}
+
+// --- Soup options (vendor-scoped, shared list reused by requiresSoup items) ---
+export interface VendorSoupOption {
+  id: string;
+  vendorId: string;
+  name: string;
+  active: boolean;
+  displayOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateVendorSoupOptionBody {
+  name: string;
+  displayOrder?: number;
+}
+
+export interface UpdateVendorSoupOptionBody {
+  name?: string;
+  active?: boolean;
   displayOrder?: number;
 }
 

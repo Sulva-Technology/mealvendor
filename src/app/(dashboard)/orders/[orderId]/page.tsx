@@ -116,6 +116,9 @@ export default function OrderDetailPage({ params }: { params: Promise<{ orderId:
                       <p className="text-xs capitalize text-[var(--color-muted-foreground)]">
                         {item.unitType} / {formatNaira(item.unitPriceKobo)} each
                       </p>
+                      {item.soupName && (
+                        <p className="mt-0.5 text-xs font-medium text-[var(--color-primary)]">🍲 Soup: {item.soupName}</p>
+                      )}
                     </div>
                   </div>
                   <span className="font-medium tabular-nums text-[var(--color-foreground)]">{formatNaira(item.lineTotalKobo)}</span>
