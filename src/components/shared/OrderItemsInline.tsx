@@ -21,7 +21,9 @@ export function OrderItemsInline({ id, fallback }: { id: string; fallback: strin
     return <span className="text-[var(--color-muted-foreground)]">{fallback}</span>;
   }
 
-  const summary = data.items.map((item) => `${item.quantity}x ${item.itemName}`).join(', ');
+  const summary = data.items
+    .map((item) => `${item.quantity}x ${item.itemName}${item.soupName ? ` (${item.soupName})` : ''}`)
+    .join(', ');
   return (
     <span className="text-[var(--color-foreground)]" title={summary}>
       {summary}

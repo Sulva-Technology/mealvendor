@@ -282,6 +282,62 @@ type ItemGroup = {
   lowCount: number;
 };
 
+function BulkSetSlots({ group, date }: { group: ItemGroup; date: string }) {
+  const queryClient = useQueryClient();
+  const [qty, setQty] = useState('');
+
+  const target = Number(qty);
+  // Only slots whose total actually differs need a write.
+  const changed = group.rows.filter((r) => r.quantityTotal !== target);
+  const valid = qty.trim().length > 0 && Number.isFinite(target) && target >= 0 && changed.length > 0;
+
+  const apply = useMutation({
+    mutationFn: async () => {
+      const results = await Promise.allSettled(
+        changed.map((r) =>
+          inventoryApi.update(r.id, { quantityTotal: target, expectedVersion: r.version }),
+        ),
+      );
+      const failed = results.filter((r) => r.status === 'rejected').length;
+      if (failed > 0) throw new Error(`${failed} of ${changed.length} slot(s) failed. Retry to finish.`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: qk.inventory(date) });
+      setQty('');
+    },
+    onSettled: () => {
+      // Refetch even on partial failure so versions/totals resync before a retry.
+      queryClient.invalidateQueries({ queryKey: qk.inventory(date) });
+    },
+  });
+
+  return (
+    <div className="flex flex-wrap items-center gap-2 border-b border-[var(--color-border)] bg-gray-50/50 px-6 py-3">
+      <span className="text-xs font-medium uppercase tracking-wide text-[var(--color-muted-foreground)]">
+        Set all {group.rows.length} slots
+      </span>
+      <input
+        type="number"
+        min={0}
+        value={qty}
+        onChange={(e) => setQty(e.target.value)}
+        placeholder="Qty"
+        className="w-20 px-2 py-1 border border-[var(--color-border)] rounded text-sm text-center tabular-nums focus:outline-none focus:border-[var(--color-primary)] focus:ring-1 focus:ring-[var(--color-primary)]"
+      />
+      <button
+        onClick={() => apply.mutate()}
+        disabled={!valid || apply.isPending}
+        className="px-3 py-1 bg-[var(--color-primary)] text-white font-medium rounded text-sm hover:bg-[var(--color-primary)]/90 transition-colors disabled:opacity-40"
+      >
+        {apply.isPending ? 'Applying…' : `Apply to all${valid ? ` (${changed.length})` : ''}`}
+      </button>
+      {apply.isError && (
+        <span className="text-xs text-[var(--color-error)]">{(apply.error as Error).message}</span>
+      )}
+    </div>
+  );
+}
+
 function ItemSection({
   group,
   date,
@@ -331,7 +387,9 @@ function ItemSection({
       </button>
 
       {!collapsed && (
-        <div className="overflow-x-auto border-t border-[var(--color-border)]">
+        <div className="border-t border-[var(--color-border)]">
+          {group.rows.length > 1 && <BulkSetSlots group={group} date={date} />}
+          <div className="overflow-x-auto">
           <table className="w-full text-sm text-left">
             <thead className="text-xs text-[var(--color-muted-foreground)] uppercase border-b border-[var(--color-border)] bg-gray-50/50">
               <tr>
@@ -348,6 +406,7 @@ function ItemSection({
               ))}
             </tbody>
           </table>
+          </div>
         </div>
       )}
     </div>
