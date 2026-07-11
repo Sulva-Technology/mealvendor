@@ -13,8 +13,10 @@ import { useAuthStore } from '@/src/lib/auth/session';
 export function VendorGuard({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
-  const accessToken = useAuthStore((s) => s.accessToken);
+  const authed = useAuthStore((s) => s.authed);
   const vendorId = useAuthStore((s) => s.vendorId);
+  const ready = useAuthStore((s) => s.ready);
+  const refreshSession = useAuthStore((s) => s.refreshSession);
 
   // Wait for zustand's persisted state to hydrate before deciding, otherwise we
   // could redirect a logged-in vendor on the first paint.
@@ -27,7 +29,13 @@ export function VendorGuard({ children }: { children: React.ReactNode }) {
     return unsub;
   }, []);
 
-  const needsOnboarding = hydrated && !!accessToken && !vendorId;
+  // Reconcile persisted UI state with the authoritative server session (cookie).
+  useEffect(() => {
+    if (hydrated) void refreshSession();
+  }, [hydrated, refreshSession]);
+
+  const settled = hydrated && ready;
+  const needsOnboarding = settled && authed && !vendorId;
 
   useEffect(() => {
     if (needsOnboarding && pathname !== '/onboarding') {
@@ -35,7 +43,7 @@ export function VendorGuard({ children }: { children: React.ReactNode }) {
     }
   }, [needsOnboarding, pathname, router]);
 
-  if (!hydrated || needsOnboarding) {
+  if (!settled || needsOnboarding) {
     return (
       <div className="flex h-screen items-center justify-center">
         <Loader2 className="h-6 w-6 animate-spin text-[var(--color-primary)]" />

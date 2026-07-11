@@ -233,6 +233,7 @@ export default function OrdersPage() {
                           </span>
                           <span className="block text-xs capitalize text-[var(--color-muted-foreground)]">
                             {order.deliveryMode?.replace(/_/g, ' ') || 'Delivery'} / {order.locationName || 'No location'}
+                            {order.roomNumber ? ` · Room ${order.roomNumber}` : ''}
                           </span>
                         </div>
                       </td>

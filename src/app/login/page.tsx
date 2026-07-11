@@ -38,11 +38,11 @@ export default function LoginPage() {
     setUnregisteredHint(false);
 
     try {
-      const tokens = await authApi.login(email, password);
-      if (!tokens?.accessToken) {
-        throw new Error('No access token returned by the server.');
+      const session = await authApi.login(email, password);
+      if (!session?.authed) {
+        throw new Error('Your account is not confirmed yet. Check your email for the link.');
       }
-      setSession(tokens);
+      setSession(session);
       router.replace('/');
     } catch (err) {
       const message =

@@ -79,6 +79,7 @@ export interface OrderSummary {
   deliverySlotName: string;
   locationId: string;
   locationName: string;
+  roomNumber?: string | null;
   orderStatus: OrderStatus;
   deliveryMode: string;
   foodSubtotalKobo: number;

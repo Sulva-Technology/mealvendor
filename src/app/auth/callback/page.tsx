@@ -6,7 +6,6 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/src/lib/auth/session';
-import type { AuthTokens, AuthUser } from '@/src/lib/api/types';
 
 /**
  * Landing page for Supabase auth-email links (confirm signup, recovery,
@@ -50,18 +49,29 @@ export default function AuthCallbackPage() {
     const refreshToken = params.get('refresh_token');
     if (accessToken && refreshToken) {
       const expiresIn = Number(params.get('expires_in')) || 0;
-      const tokens: AuthTokens = {
-        accessToken,
-        refreshToken,
-        expiresIn,
-        // The backend's login response carries a user object; the hash flow does
-        // not, so leave a minimal placeholder — claims are read from the JWT.
-        user: {} as AuthUser,
-      };
-      setSession(tokens);
-      // Strip the tokens from the URL so they aren't left in history.
+      // Hand the fragment tokens to the BFF, which moves them into httpOnly
+      // cookies; strip them from the URL immediately so they never persist in
+      // history. Only non-sensitive session facts come back to the store.
       window.history.replaceState(null, '', window.location.pathname);
-      router.replace('/');
+      void (async () => {
+        try {
+          const res = await fetch('/api/auth/callback', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ accessToken, refreshToken, expiresIn }),
+          });
+          const json = await res.json().catch(() => null);
+          if (!res.ok || !json?.data?.authed) {
+            setError('We could not complete sign-in from this link. Please sign in again.');
+            return;
+          }
+          setSession({ authed: true, vendorId: json.data.vendorId ?? null });
+          router.replace('/');
+        } catch {
+          setError('We could not complete sign-in from this link. Please sign in again.');
+        }
+      })();
       return;
     }
 

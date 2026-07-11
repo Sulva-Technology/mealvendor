@@ -2,77 +2,76 @@
 
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { AuthTokens, AuthUser } from '../api/types';
-import { getVendorIdFromToken } from './jwt';
+import type { AuthUser } from '../api/types';
 
 /**
  * Auth/session store for the vendor portal.
  *
- * Tokens come from the backend's own `/auth/vendor/login` endpoint (the backend
- * wraps Supabase and issues a Supabase JWT). We persist them to localStorage and
- * also mirror a lightweight presence cookie so the Next.js middleware can gate
- * routes without reading localStorage.
+ * Tokens are NEVER held here. The backend's access/refresh JWTs live only in
+ * httpOnly cookies set by the /api/auth/* and /api/proxy routes, so browser JS
+ * (and any XSS) cannot read them. This store keeps only non-sensitive session
+ * facts used for rendering and onboarding gating: whether we're authed, the
+ * display user, and the vendor id. The httpOnly access cookie — read by the
+ * middleware — is the real gate.
  */
-
-const COOKIE_NAME = 'md-vendor-auth';
-
-function setAuthCookie(present: boolean) {
-  if (typeof document === 'undefined') return;
-  if (present) {
-    document.cookie = `${COOKIE_NAME}=1; path=/; max-age=2592000; samesite=lax`;
-  } else {
-    document.cookie = `${COOKIE_NAME}=; path=/; max-age=0; samesite=lax`;
-  }
+export interface SessionInfo {
+  authed?: boolean;
+  user?: AuthUser | null;
+  vendorId?: string | null;
 }
 
 interface AuthState {
-  accessToken: string | null;
-  refreshToken: string | null;
+  authed: boolean;
   user: AuthUser | null;
-  /** Vendor id from the access token's `app_metadata.vendor_id` claim, if present. */
   vendorId: string | null;
-  expiresAt: number | null;
-  setSession: (tokens: AuthTokens) => void;
+  /** True once the store has reconciled with the server session at least once. */
+  ready: boolean;
+  setSession: (info: SessionInfo) => void;
   clearSession: () => void;
+  /** Reconcile with the server (optionally forcing a token refresh). */
+  refreshSession: (opts?: { refresh?: boolean }) => Promise<SessionInfo>;
 }
 
 export const useAuthStore = create<AuthState>()(
   persist(
     (set) => ({
-      accessToken: null,
-      refreshToken: null,
+      authed: false,
       user: null,
       vendorId: null,
-      expiresAt: null,
-      setSession: (tokens) => {
-        setAuthCookie(true);
-        set({
-          accessToken: tokens.accessToken,
-          refreshToken: tokens.refreshToken,
-          user: tokens.user ?? null,
-          vendorId: getVendorIdFromToken(tokens.accessToken),
-          expiresAt: tokens.expiresIn ? Date.now() + tokens.expiresIn * 1000 : null,
-        });
-      },
-      clearSession: () => {
-        setAuthCookie(false);
-        set({ accessToken: null, refreshToken: null, user: null, vendorId: null, expiresAt: null });
-      },
+      ready: false,
+      setSession: (info) =>
+        set((prev) => ({
+          authed: info.authed ?? prev.authed,
+          user: info.user === undefined ? prev.user : info.user,
+          vendorId: info.vendorId === undefined ? prev.vendorId : info.vendorId,
+          ready: true
+        })),
+      clearSession: () => set({ authed: false, user: null, vendorId: null, ready: true }),
+      refreshSession: async (opts) => {
+        try {
+          const res = await fetch(`/api/auth/session${opts?.refresh ? '?refresh=1' : ''}`, {
+            credentials: 'include',
+            cache: 'no-store'
+          });
+          const json = await res.json().catch(() => null);
+          const data = (json?.data ?? {}) as SessionInfo;
+          set({
+            authed: !!data.authed,
+            user: (data.user as AuthUser | null) ?? null,
+            vendorId: data.vendorId ?? null,
+            ready: true
+          });
+          return data;
+        } catch {
+          set({ ready: true });
+          return { authed: false };
+        }
+      }
     }),
     {
       name: 'md-vendor-session',
-      onRehydrateStorage: () => (state) => {
-        // Keep the middleware cookie in sync with persisted state on load, and
-        // re-derive vendorId in case the persisted token changed schema.
-        if (state) {
-          setAuthCookie(!!state.accessToken);
-          state.vendorId = getVendorIdFromToken(state.accessToken);
-        }
-      },
+      // Only non-sensitive display state is persisted; authed truth is the cookie.
+      partialize: (state) => ({ user: state.user, vendorId: state.vendorId, authed: state.authed })
     }
   )
 );
-
-// Non-React accessors for use inside the fetch layer.
-export const getAccessToken = () => useAuthStore.getState().accessToken;
-export const getRefreshToken = () => useAuthStore.getState().refreshToken;

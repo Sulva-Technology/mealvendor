@@ -15,10 +15,10 @@ type FieldErrors = Partial<Record<'campusId' | 'legalName' | 'displayName' | 'ph
 
 export default function OnboardingPage() {
   const router = useRouter();
-  const accessToken = useAuthStore((s) => s.accessToken);
+  const authed = useAuthStore((s) => s.authed);
   const vendorId = useAuthStore((s) => s.vendorId);
-  const refreshToken = useAuthStore((s) => s.refreshToken);
   const setSession = useAuthStore((s) => s.setSession);
+  const refreshSession = useAuthStore((s) => s.refreshSession);
 
   // Start false so server prerender and first client paint agree; the effect
   // flips it once zustand's persisted state has hydrated (client-only).
@@ -29,12 +29,15 @@ export default function OnboardingPage() {
     return unsub;
   }, []);
 
-  // Bounce out if not authenticated, or already onboarded.
+  // Reconcile with the server session (the httpOnly cookie is the real gate),
+  // then bounce out if not authenticated, or already onboarded.
   useEffect(() => {
     if (!hydrated) return;
-    if (!accessToken) router.replace('/login');
-    else if (vendorId) router.replace('/');
-  }, [hydrated, accessToken, vendorId, router]);
+    void refreshSession().then((info) => {
+      if (!info.authed) router.replace('/login');
+      else if (info.vendorId) router.replace('/');
+    });
+  }, [hydrated, refreshSession, router]);
 
   const [campuses, setCampuses] = useState<Campus[]>([]);
   const [campusesError, setCampusesError] = useState<string | null>(null);
@@ -78,16 +81,12 @@ export default function OnboardingPage() {
     return Object.keys(e).length === 0;
   };
 
-  /** Refresh tokens so the new vendor_id lands in the JWT. Mandatory after onboard. */
+  /** Refresh the session so the new vendor_id lands in the JWT. Mandatory after onboard. */
   const refreshAndContinue = async (vendor?: VendorProfile) => {
-    if (!refreshToken) {
-      setSubmitError('Your session expired. Please sign in again.');
-      router.replace('/login');
-      return;
-    }
-    const fresh = await authApi.refresh(refreshToken);
-    if (!fresh?.accessToken) {
+    const fresh = await authApi.refreshSession();
+    if (!fresh?.authed) {
       setSubmitError('Could not refresh your session. Please sign in again.');
+      router.replace('/login');
       return;
     }
     setSession(fresh);
@@ -175,7 +174,7 @@ export default function OnboardingPage() {
     setSubmitError(msg || 'Something went wrong. Please try again.');
   };
 
-  if (!hydrated || (accessToken && vendorId) || !accessToken) {
+  if (!hydrated || (authed && vendorId) || !authed) {
     return (
       <div className="flex min-h-screen items-center justify-center">
         <Loader2 className="h-6 w-6 animate-spin text-[var(--color-primary)]" />

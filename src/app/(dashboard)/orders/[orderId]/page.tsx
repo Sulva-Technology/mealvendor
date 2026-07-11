@@ -151,7 +151,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ orderId:
             <h2 className="mb-4 text-base font-semibold text-[var(--color-foreground)]">Delivery and rider handoff</h2>
             <div className="grid gap-4 sm:grid-cols-2">
               <Info icon={Clock} label="Scheduled" value={order.scheduledAt ? formatDateTime(order.scheduledAt) : order.deliverySlotName || order.serviceDate} />
-              <Info icon={MapPin} label="Delivery/pickup type" value={`${prettifyEnum(order.deliveryMode)} / ${order.locationName || 'No location'}`} />
+              <Info icon={MapPin} label="Delivery/pickup type" value={`${prettifyEnum(order.deliveryMode)} / ${order.locationName || 'No location'}${order.roomNumber ? ` · Room ${order.roomNumber}` : ''}`} />
               <Info icon={Truck} label="Rider" value={order.riderName || riderAssignmentLabel(order)} detail={order.riderContact || 'Contact not provided'} />
               <Info icon={ShieldCheck} label="Handoff" value={handoffStatusLabel(order)} detail={order.handoffCode ? `Code ${order.handoffCode}` : 'No handoff code yet'} />
             </div>
@@ -202,6 +202,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ orderId:
               <Summary label="Payment" value={paymentStatusLabel(order)} />
               <Summary label="Paid at" value={order.paidAt ? formatDateTime(order.paidAt) : 'Not paid'} />
               <Summary label="Completed at" value={order.deliveredAt ? formatDateTime(order.deliveredAt) : 'Pending'} />
+              <Summary label="Room number" value={order.roomNumber || 'None'} />
               <Summary label="Special notes" value={order.specialNotes || 'None'} />
             </div>
           </TonalCard>

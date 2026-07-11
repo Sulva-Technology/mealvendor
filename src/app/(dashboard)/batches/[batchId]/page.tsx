@@ -166,6 +166,7 @@ export default function BatchDetailPage({ params }: { params: Promise<{ batchId:
                         <p className="mt-0.5 flex items-center gap-1 text-xs text-[var(--color-muted-foreground)]">
                           <MapPin className="h-3 w-3" />
                           {order.locationName || 'No location'}
+                          {order.roomNumber ? ` · Room ${order.roomNumber}` : ''}
                           <span className="text-[var(--color-border)]">·</span>
                           <span className="font-mono">{order.orderNumber}</span>
                         </p>

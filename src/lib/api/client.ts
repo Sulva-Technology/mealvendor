@@ -1,7 +1,27 @@
-import { getAccessToken, getRefreshToken, useAuthStore } from '../auth/session';
+import { useAuthStore } from '../auth/session';
 
-export const API_BASE_URL =
+/**
+ * Base URLs.
+ *
+ * - Authenticated calls go through the same-origin BFF proxy (/api/proxy), which
+ *   injects the bearer from an httpOnly cookie and refreshes on 401. The access
+ *   token is never exposed to browser JS.
+ * - Public calls (auth:false, e.g. /campuses, password-reset) go straight to the
+ *   backend — they need no token.
+ * - Endpoints that already start with /api/ are same-origin local routes
+ *   (/api/auth/login etc.) and are called as-is.
+ */
+export const PROXY_BASE_URL = '/api/proxy';
+export const PUBLIC_API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL || 'https://mealdirectbackend.onrender.com/v1';
+
+/** @deprecated Use PROXY_BASE_URL / PUBLIC_API_BASE_URL. Kept for compatibility. */
+export const API_BASE_URL = PUBLIC_API_BASE_URL;
+
+function baseFor(endpoint: string, auth: boolean): string {
+  if (endpoint.startsWith('/api/')) return '';
+  return auth ? PROXY_BASE_URL : PUBLIC_API_BASE_URL;
+}
 
 /**
  * Render's free tier sleeps after idle; the first request can take 30–50s to
@@ -45,7 +65,7 @@ function logApiFailure(method: string, endpoint: string, err: ApiError): void {
   }
 }
 
-function buildHeaders(options: RequestInit, withAuth: boolean): Headers {
+function buildHeaders(options: RequestInit): Headers {
   const headers = new Headers(options.headers);
   headers.set('X-Request-ID', crypto.randomUUID());
   headers.set('Accept', 'application/json');
@@ -54,10 +74,8 @@ function buildHeaders(options: RequestInit, withAuth: boolean): Headers {
     headers.set('Content-Type', 'application/json');
   }
 
-  if (withAuth) {
-    const token = getAccessToken();
-    if (token) headers.set('Authorization', `Bearer ${token}`);
-  }
+  // The bearer is injected server-side by the proxy from an httpOnly cookie; the
+  // browser never holds or sends the token.
 
   // Idempotency for mutations (order/payment mutations require it).
   if (['POST', 'PUT', 'PATCH', 'DELETE'].includes((options.method || 'GET').toUpperCase())) {
@@ -84,39 +102,6 @@ async function parseError(response: Response, requestId: string): Promise<ApiErr
   return new ApiError(response.status, 'HTTP_ERROR', response.statusText, [], requestId);
 }
 
-let refreshInFlight: Promise<boolean> | null = null;
-
-/** Attempt to refresh the access token. De-duplicated across concurrent 401s. */
-async function tryRefresh(): Promise<boolean> {
-  const refreshToken = getRefreshToken();
-  if (!refreshToken) return false;
-
-  if (!refreshInFlight) {
-    refreshInFlight = (async () => {
-      try {
-        const res = await fetch(`${API_BASE_URL}/auth/refresh`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-          body: JSON.stringify({ refreshToken }),
-        });
-        if (!res.ok) return false;
-        const json = await res.json();
-        const tokens = json?.data ?? json;
-        if (tokens?.accessToken) {
-          useAuthStore.getState().setSession(tokens);
-          return true;
-        }
-        return false;
-      } catch {
-        return false;
-      } finally {
-        refreshInFlight = null;
-      }
-    })();
-  }
-  return refreshInFlight;
-}
-
 interface FetchOptions extends RequestInit {
   /** Set false for unauthenticated calls (login/refresh). Defaults to true. */
   auth?: boolean;
@@ -129,16 +114,20 @@ interface FetchOptions extends RequestInit {
 export async function fetchApi<T>(endpoint: string, options: FetchOptions = {}): Promise<T> {
   const { auth = true, ...init } = options;
   const requestId = crypto.randomUUID();
+  const base = baseFor(endpoint, auth);
+  // Same-origin calls (proxy + local /api routes) must carry cookies.
+  const sameOrigin = base === PROXY_BASE_URL || base === '';
 
   const doFetch = async () => {
-    const headers = buildHeaders(init, auth);
+    const headers = buildHeaders(init);
     headers.set('X-Request-ID', requestId);
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
     try {
-      return await fetch(`${API_BASE_URL}${endpoint}`, {
+      return await fetch(`${base}${endpoint}`, {
         ...init,
         headers,
+        credentials: sameOrigin ? 'include' : init.credentials,
         signal: init.signal ?? controller.signal,
       });
     } finally {
@@ -149,20 +138,16 @@ export async function fetchApi<T>(endpoint: string, options: FetchOptions = {}):
   const method = (init.method || 'GET').toUpperCase();
 
   try {
-    let response = await doFetch();
+    const response = await doFetch();
 
-    // One transparent refresh-and-retry on 401 for authenticated calls.
+    // The proxy already refreshes the token on 401 and only surfaces a 401 when
+    // the refresh itself failed. Treat that as a dead session: clear and bounce.
     if (response.status === 401 && auth) {
-      const refreshed = await tryRefresh();
-      if (refreshed) {
-        response = await doFetch();
-      } else {
-        useAuthStore.getState().clearSession();
-        if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/login')) {
-          window.location.href = '/login';
-        }
-        throw await parseError(response, requestId);
+      useAuthStore.getState().clearSession();
+      if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/login')) {
+        window.location.href = '/login';
       }
+      throw await parseError(response, requestId);
     }
 
     if (!response.ok) throw await parseError(response, requestId);

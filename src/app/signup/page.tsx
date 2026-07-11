@@ -50,14 +50,14 @@ export default function SignupPage() {
     if (!validate()) return;
     setSubmitting(true);
     try {
-      const tokens = await authApi.signup(email.trim(), password);
-      if (!tokens?.accessToken) {
+      const session = await authApi.signup(email.trim(), password);
+      if (!session?.authed) {
         // No session issued — email confirmation required first.
         setConfirmSent(true);
         setSubmitting(false);
         return;
       }
-      setSession(tokens);
+      setSession(session);
       router.replace('/');
     } catch (err) {
       const message =

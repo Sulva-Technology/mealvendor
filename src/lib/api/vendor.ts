@@ -1,7 +1,7 @@
 import { fetchApi } from './client';
 import type {
   AcceptInviteBody,
-  AuthTokens,
+  AuthUser,
   Campus,
   VendorOnboardBody,
   VendorOnboardResult,
@@ -87,16 +87,30 @@ function qs(params: Record<string, unknown>): string {
 export const AUTH_REDIRECT_URL =
   process.env.NEXT_PUBLIC_AUTH_REDIRECT_URL || 'https://vendor.mealdirectly.com/auth/callback';
 
+/**
+ * Non-sensitive session result returned by the BFF auth routes. Tokens are set
+ * as httpOnly cookies server-side and never returned to the browser.
+ * `authed: false` means the account exists but has no session yet (email
+ * confirmation required).
+ */
+export interface AuthSessionResult {
+  authed: boolean;
+  user: AuthUser | null;
+  vendorId: string | null;
+}
+
 // --- Auth ---
+// login/signup/accept-invite/logout hit same-origin BFF routes (/api/auth/*),
+// which broker the backend and store JWTs in httpOnly cookies.
 export const authApi = {
   login: (email: string, password: string) =>
-    fetchApi<AuthTokens>('/auth/vendor/login', {
+    fetchApi<AuthSessionResult>('/api/auth/login', {
       method: 'POST',
       auth: false,
       body: JSON.stringify({ email, password }),
     }),
   signup: (email: string, password: string) =>
-    fetchApi<AuthTokens>('/auth/vendor/signup', {
+    fetchApi<AuthSessionResult>('/api/auth/signup', {
       method: 'POST',
       auth: false,
       body: JSON.stringify({ email, password, redirectTo: AUTH_REDIRECT_URL }),
@@ -125,21 +139,22 @@ export const authApi = {
       auth: false,
       body: JSON.stringify({ email, portal: 'vendor' }),
     }),
-  /** Exchange a refresh token for fresh tokens (e.g. after onboarding to pick up vendor_id). */
-  refresh: (refreshToken: string) =>
-    fetchApi<AuthTokens>('/auth/refresh', {
-      method: 'POST',
-      auth: false,
-      body: JSON.stringify({ refreshToken }),
-    }),
-  logout: () => fetchApi<unknown>('/auth/logout', { method: 'POST' }).catch(() => null),
+  /**
+   * Reconcile the session with the server, forcing a token refresh so a newly
+   * onboarded vendor picks up its vendor_id claim. Returns the fresh session
+   * facts; the rotated tokens are re-set as httpOnly cookies server-side.
+   */
+  refreshSession: () =>
+    fetchApi<AuthSessionResult>('/api/auth/session?refresh=1', { auth: false }),
+  logout: () =>
+    fetchApi<unknown>('/api/auth/logout', { method: 'POST', auth: false }).catch(() => null),
   me: () => fetchApi<unknown>('/auth/me'),
   /** Admin-invited vendor sets a password and links their account in one step. */
   acceptInvite: (body: AcceptInviteBody) =>
-    fetchApi<AuthTokens>('/auth/vendor/accept-invite', {
+    fetchApi<AuthSessionResult>('/api/auth/accept-invite', {
       method: 'POST',
       auth: false,
-      body: JSON.stringify(body),
+      body: JSON.stringify({ ...body, redirectTo: AUTH_REDIRECT_URL }),
     }),
 };
 
@@ -205,12 +220,11 @@ export interface OrderFilters {
 }
 
 export const ordersApi = {
-  // Expired orders are unpaid orders whose payment window lapsed — they never
-  // reach the vendor for fulfilment, so hide them from every vendor-facing list
-  // (dashboard + orders board). Filtered here so all consumers stay consistent.
+  // Unpaid/expired orders never reach the vendor for fulfilment. Backend filters
+  // them too; keep this client guard so stale deployments still show paid orders only.
   list: async (filters: OrderFilters = {}) => {
     const orders = await fetchApi<OrderSummary[]>(`/vendor/orders${qs({ ...filters })}`);
-    return orders.filter((order) => order.orderStatus !== 'expired');
+    return orders.filter((order) => order.paidAt && !['pending_payment', 'expired'].includes(order.orderStatus));
   },
   get: (id: string) => fetchApi<OrderDetail>(`/vendor/orders/${id}`),
   accept: (id: string) => fetchApi<OrderDetail>(`/vendor/orders/${id}/accept`, { method: 'POST' }),

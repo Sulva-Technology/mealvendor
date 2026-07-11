@@ -64,13 +64,13 @@ export default function AcceptInvitePage() {
     if (!token || !validate()) return;
     setSubmitting(true);
     try {
-      const tokens = await authApi.acceptInvite({
+      const session = await authApi.acceptInvite({
         email: email.trim(),
         password,
         token,
         fullName: fullName.trim() || undefined,
       });
-      if (!tokens?.accessToken) {
+      if (!session?.authed) {
         // Account was created and a confirmation email was sent — the backend
         // doesn't issue a session until the vendor confirms. Show a
         // check-your-email state instead of treating this as an error.
@@ -78,7 +78,7 @@ export default function AcceptInvitePage() {
         setSubmitting(false);
         return;
       }
-      setSession(tokens);
+      setSession(session);
       router.replace('/');
     } catch (err) {
       const message =

@@ -106,7 +106,9 @@ export default function DashboardHome() {
                 >
                   <div>
                     <p className="text-sm font-medium text-[var(--color-foreground)]">{o.orderNumber}</p>
-                    <p className="text-xs text-[var(--color-muted-foreground)]">{o.locationName}</p>
+                    <p className="text-xs text-[var(--color-muted-foreground)]">
+                      {o.roomNumber ? `${o.locationName} · Room ${o.roomNumber}` : o.locationName}
+                    </p>
                   </div>
                   <div className="flex items-center gap-3">
                     <span className="text-sm font-medium tabular-nums">{formatNaira(orderVendorTotalKobo(o))}</span>
