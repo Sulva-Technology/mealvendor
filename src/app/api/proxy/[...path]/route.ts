@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 import { BACKEND_BASE_URL } from '@/src/lib/server/backend';
-import { ACCESS_COOKIE, REFRESH_COOKIE, setSessionCookies } from '@/src/lib/server/auth-cookies';
+import {
+  ACCESS_COOKIE,
+  REFRESH_COOKIE,
+  setSessionCookies,
+  clearSessionCookies
+} from '@/src/lib/server/auth-cookies';
 import { isSafeProxyPath } from '@/src/lib/proxy-guard';
 
 /**
@@ -94,6 +99,9 @@ async function handle(request: NextRequest, path: string[]) {
       { error: { code: 'UNAUTHENTICATED', message: 'Session could not be refreshed.' } },
       { status: 401 }
     );
+    // Refresh failed for good — delete the stale cookies so the middleware stops
+    // treating this as a live session and bouncing /login back to the dashboard.
+    clearSessionCookies(res);
     return res;
   }
 

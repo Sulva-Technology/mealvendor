@@ -2,7 +2,12 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import { getVendorIdFromToken } from '@/src/lib/auth/jwt';
 import { BACKEND_BASE_URL } from '@/src/lib/server/backend';
-import { ACCESS_COOKIE, REFRESH_COOKIE, setSessionCookies } from '@/src/lib/server/auth-cookies';
+import {
+  ACCESS_COOKIE,
+  REFRESH_COOKIE,
+  setSessionCookies,
+  clearSessionCookies
+} from '@/src/lib/server/auth-cookies';
 
 /**
  * Reports the current session to the browser without exposing tokens.
@@ -37,7 +42,11 @@ export async function GET(request: NextRequest) {
   }
 
   if (!effectiveAccess) {
-    return NextResponse.json({ data: { authed: false, vendorId: null, user: null } });
+    const response = NextResponse.json({ data: { authed: false, vendorId: null, user: null } });
+    // No usable access token and refresh (if any) failed — drop stale cookies so
+    // the middleware no longer sees a phantom session.
+    clearSessionCookies(response);
+    return response;
   }
 
   // Best-effort user fetch so the UI can show identity; never fail the session on it.
