@@ -11,7 +11,9 @@ import type { NextResponse } from 'next/server';
 export const ACCESS_COOKIE = 'md_vendor_access';
 export const REFRESH_COOKIE = 'md_vendor_refresh';
 
-const ACCESS_MAX_AGE_FALLBACK_S = 60 * 60; // 1h
+// Fallback only — the backend's expiresIn wins when present. Keep this short so a
+// stolen access cookie without a refresh cookie ages out quickly.
+const ACCESS_MAX_AGE_FALLBACK_S = 15 * 60; // 15m
 const REFRESH_MAX_AGE_S = 30 * 24 * 60 * 60; // 30d
 
 const isProd = process.env.NODE_ENV === 'production';
