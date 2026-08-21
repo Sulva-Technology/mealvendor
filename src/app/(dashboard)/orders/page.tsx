@@ -23,8 +23,9 @@ import {
   vendorOrderStageLabel,
 } from '@/src/lib/vendor-workflow';
 
-const FILTERS = ['all', 'paid', 'accepted', 'preparing', 'ready', 'out_for_delivery', 'delivered', 'cancelled'] as const;
-const ACCEPTABLE = new Set(['paid', 'confirmed']);
+const FILTERS = ['all', 'paid', 'ready', 'out_for_delivery', 'delivered', 'cancelled'] as const;
+// v2 collapse: a "new" order is simply paid-and-not-yet-ready.
+const ACCEPTABLE = new Set(['paid']);
 
 type NextAction = NonNullable<ReturnType<typeof nextOrderAction>>;
 
@@ -63,7 +64,7 @@ export default function OrdersPage() {
 
   const acceptSelected = useMutation({
     mutationFn: async (ids: string[]) => {
-      await Promise.all(ids.map((id) => ordersApi.accept(id)));
+      await Promise.all(ids.map((id) => ordersApi.ready(id)));
     },
     onSuccess: () => {
       invalidateOrders();
@@ -74,8 +75,6 @@ export default function OrdersPage() {
   const runAction = useMutation({
     mutationFn: ({ order, action }: { order: OrderSummary; action: NextAction }) => {
       if (!canRunOrderAction(order, action)) throw new Error('Invalid status transition for this order.');
-      if (action === 'accept') return ordersApi.accept(order.id);
-      if (action === 'prepare') return ordersApi.preparing(order.id);
       if (action === 'ready') return ordersApi.ready(order.id);
       return ordersApi.confirmRiderPickup(order.id);
     },
@@ -97,7 +96,7 @@ export default function OrdersPage() {
       <div className="flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-[var(--color-foreground)]">Orders</h1>
-          <p className="text-sm text-[var(--color-muted-foreground)]">Accept, prepare, hand off, and resolve vendor orders.</p>
+          <p className="text-sm text-[var(--color-muted-foreground)]">Mark ready, hand off, and resolve vendor orders.</p>
         </div>
         <div className="relative w-full sm:w-72">
           <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-[var(--color-muted-foreground)]" />
@@ -130,6 +129,7 @@ export default function OrdersPage() {
       {selectedAcceptable.length > 0 && (
         <div className="flex items-center justify-between gap-4 rounded-lg border border-[var(--color-primary)]/30 bg-[var(--color-primary)]/5 px-4 py-3">
           <span className="text-sm font-medium text-[var(--color-foreground)]">{selectedAcceptable.length} new order(s) selected</span>
+          {/* v2 collapse: bulk action moves paid orders straight to ready. */}
           <div className="flex items-center gap-2">
             <button onClick={() => setSelected(new Set())} className="text-sm text-[var(--color-muted-foreground)] hover:underline">
               Clear
@@ -140,7 +140,7 @@ export default function OrdersPage() {
               className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--color-primary)] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[var(--color-primary)]/90 disabled:opacity-60"
             >
               <Check className="h-4 w-4" />
-              {acceptSelected.isPending ? 'Accepting...' : `Accept ${selectedAcceptable.length}`}
+              {acceptSelected.isPending ? 'Working...' : `Mark ${selectedAcceptable.length} ready`}
             </button>
           </div>
         </div>

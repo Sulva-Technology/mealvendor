@@ -25,19 +25,10 @@ import {
 
 type NextAction = NonNullable<ReturnType<typeof nextOrderAction>>;
 
-/** Run the legal accept -> preparing -> ready chain for one order, from wherever
- * it currently sits. The backend rejects skipped steps, so we never jump. */
+/** v2 collapse: a paid ("new") order goes straight to ready in one call. The
+ * accept/preparing intermediate steps no longer exist. */
 async function advanceOrderToReady(order: OrderSummary): Promise<void> {
-  let stage = vendorOrderStage(order.orderStatus);
-  if (stage === 'new') {
-    await ordersApi.accept(order.id);
-    stage = 'accepted';
-  }
-  if (stage === 'accepted') {
-    await ordersApi.preparing(order.id);
-    stage = 'preparing';
-  }
-  if (stage === 'preparing') {
+  if (vendorOrderStage(order.orderStatus) === 'new') {
     await ordersApi.ready(order.id);
   }
 }
@@ -55,12 +46,10 @@ export default function BatchDetailPage({ params }: { params: Promise<{ batchId:
     queryClient.invalidateQueries({ queryKey: ['vendor', 'order'] });
   };
 
-  // One order, one legal step forward (accept -> prepare -> ready).
+  // One order, one step forward (paid -> ready, or confirm rider pickup).
   const runStep = useMutation({
     mutationFn: async ({ order, action }: { order: OrderSummary; action: NextAction }) => {
-      if (action === 'accept') await ordersApi.accept(order.id);
-      else if (action === 'prepare') await ordersApi.preparing(order.id);
-      else if (action === 'ready') await ordersApi.ready(order.id);
+      if (action === 'ready') await ordersApi.ready(order.id);
       else await ordersApi.confirmRiderPickup(order.id);
       return batchesApi.get(batchId);
     },
@@ -71,9 +60,7 @@ export default function BatchDetailPage({ params }: { params: Promise<{ batchId:
   // time. Falls back to per-order chaining if the batch endpoint rejects.
   const markAllReady = useMutation({
     mutationFn: async () => {
-      const targets = orders.filter((o) =>
-        ['new', 'accepted', 'preparing'].includes(vendorOrderStage(o.orderStatus))
-      );
+      const targets = orders.filter((o) => vendorOrderStage(o.orderStatus) === 'new');
       await Promise.all(targets.map(advanceOrderToReady));
       try {
         return await batchesApi.readyForPickup(batchId);
@@ -95,7 +82,7 @@ export default function BatchDetailPage({ params }: { params: Promise<{ batchId:
   const location = batchLocationLabel(batch);
   const pending = runStep.isPending || markAllReady.isPending || pickup.isPending;
   const mutationError = runStep.error || markAllReady.error || pickup.error;
-  const hasReadyable = orders.some((o) => ['new', 'accepted', 'preparing'].includes(vendorOrderStage(o.orderStatus)));
+  const hasReadyable = orders.some((o) => vendorOrderStage(o.orderStatus) === 'new');
 
   return (
     <div className="space-y-6 pb-20 md:pb-0">

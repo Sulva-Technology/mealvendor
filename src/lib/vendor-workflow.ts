@@ -2,8 +2,6 @@ import type { BatchDetail, BatchSummary, OrderStatus, OrderSummary } from './api
 
 export type VendorOrderStage =
   | 'new'
-  | 'accepted'
-  | 'preparing'
   | 'ready_for_pickup'
   | 'picked_up_by_rider'
   | 'completed'
@@ -11,7 +9,9 @@ export type VendorOrderStage =
   | 'disputed'
   | 'blocked';
 
-export type VendorOrderAction = 'accept' | 'prepare' | 'ready' | 'confirm_pickup';
+// v2 order-status collapse: vendor path is paid -> ready in one tap. The
+// accept/prepare steps (and their endpoints) were removed backend-side.
+export type VendorOrderAction = 'ready' | 'confirm_pickup';
 
 export const SUPPORT_CATEGORIES = [
   'payment_order_mismatch',
@@ -50,12 +50,7 @@ export function supportCategoryLabel(category: SupportCategory): string {
 export function vendorOrderStage(status: OrderStatus | string): VendorOrderStage {
   switch (status) {
     case 'paid':
-    case 'confirmed':
       return 'new';
-    case 'accepted':
-      return 'accepted';
-    case 'preparing':
-      return 'preparing';
     case 'ready':
     case 'ready_for_pickup':
       return 'ready_for_pickup';
@@ -81,10 +76,6 @@ export function vendorOrderStageLabel(stage: VendorOrderStage): string {
   switch (stage) {
     case 'new':
       return 'New order';
-    case 'accepted':
-      return 'Accepted';
-    case 'preparing':
-      return 'Preparing';
     case 'ready_for_pickup':
       return 'Ready for pickup';
     case 'picked_up_by_rider':
@@ -103,10 +94,6 @@ export function vendorOrderStageLabel(stage: VendorOrderStage): string {
 export function nextOrderAction(status: OrderStatus | string): VendorOrderAction | null {
   switch (vendorOrderStage(status)) {
     case 'new':
-      return 'accept';
-    case 'accepted':
-      return 'prepare';
-    case 'preparing':
       return 'ready';
     case 'ready_for_pickup':
       return 'confirm_pickup';
@@ -117,10 +104,6 @@ export function nextOrderAction(status: OrderStatus | string): VendorOrderAction
 
 export function orderActionLabel(action: VendorOrderAction): string {
   switch (action) {
-    case 'accept':
-      return 'Accept order';
-    case 'prepare':
-      return 'Start preparing';
     case 'ready':
       return 'Mark ready for pickup';
     case 'confirm_pickup':
@@ -168,7 +151,7 @@ export function batchReadyCounts(batch: BatchDetail | BatchSummary): { ready: nu
 }
 
 export function canMarkReady(order: OrderSummary): boolean {
-  return ['accepted', 'preparing'].includes(vendorOrderStage(order.orderStatus));
+  return vendorOrderStage(order.orderStatus) === 'new';
 }
 
 export function canBatchMoveToReady(batch: BatchDetail | BatchSummary): boolean {

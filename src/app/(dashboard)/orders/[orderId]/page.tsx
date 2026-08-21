@@ -48,8 +48,6 @@ export default function OrderDetailPage({ params }: { params: Promise<{ orderId:
   const runAction = useMutation({
     mutationFn: ({ order, action }: { order: OrderDetail; action: NextAction }) => {
       if (!canRunOrderAction(order, action)) throw new Error('Invalid status transition for this order.');
-      if (action === 'accept') return ordersApi.accept(order.id);
-      if (action === 'prepare') return ordersApi.preparing(order.id);
       if (action === 'ready') return ordersApi.ready(order.id);
       return ordersApi.confirmRiderPickup(order.id);
     },
@@ -85,12 +83,11 @@ export default function OrderDetailPage({ params }: { params: Promise<{ orderId:
       </div>
 
       <TonalCard className="p-4">
-        <div className="grid gap-3 sm:grid-cols-4">
+        <div className="grid gap-3 sm:grid-cols-3">
           {[
             ['New order', stage === 'new'],
-            ['Accepted', ['accepted', 'preparing', 'ready_for_pickup', 'picked_up_by_rider', 'completed'].includes(stage)],
-            ['Preparing', ['preparing', 'ready_for_pickup', 'picked_up_by_rider', 'completed'].includes(stage)],
             ['Ready / pickup', ['ready_for_pickup', 'picked_up_by_rider', 'completed'].includes(stage)],
+            ['Handed off', ['picked_up_by_rider', 'completed'].includes(stage)],
           ].map(([label, done]) => (
             <div key={String(label)} className={`rounded-lg border p-3 ${done ? 'border-[var(--color-primary)]/30 bg-[var(--color-primary)]/5' : 'border-[var(--color-border)] bg-gray-50'}`}>
               <p className={`text-sm font-medium ${done ? 'text-[var(--color-primary)]' : 'text-[var(--color-muted-foreground)]'}`}>{label}</p>

@@ -25,7 +25,7 @@ export default function DashboardHome() {
   const revenue = orders
     .filter((o) => !['cancelled', 'expired', 'refunded', 'pending_payment'].includes(o.orderStatus))
     .reduce((sum, o) => sum + orderVendorTotalKobo(o), 0);
-  const pendingPrep = orders.filter((o) => ['paid', 'accepted', 'confirmed'].includes(o.orderStatus)).length;
+  const pendingPrep = orders.filter((o) => o.orderStatus === 'paid').length;
   const pendingSettlements = settlements
     .filter((s) => s.status === 'draft' || s.status === 'approved')
     .reduce((sum, s) => sum + s.payableKobo, 0);

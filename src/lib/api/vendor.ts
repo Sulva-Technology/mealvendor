@@ -227,10 +227,8 @@ export const ordersApi = {
     return orders.filter((order) => order.paidAt && !['pending_payment', 'expired'].includes(order.orderStatus));
   },
   get: (id: string) => fetchApi<OrderDetail>(`/vendor/orders/${id}`),
-  accept: (id: string) => fetchApi<OrderDetail>(`/vendor/orders/${id}/accept`, { method: 'POST' }),
-  prepare: (id: string) => fetchApi<OrderDetail>(`/vendor/orders/${id}/prepare`, { method: 'POST' }),
-  preparing: (id: string) =>
-    fetchApi<OrderDetail>(`/vendor/orders/${id}/preparing`, { method: 'POST' }),
+  // v2 collapse: paid -> ready in one step. accept/prepare/preparing endpoints
+  // were removed backend-side (now 404); `ready` is the only vendor transition.
   ready: (id: string) => fetchApi<OrderDetail>(`/vendor/orders/${id}/ready`, { method: 'POST' }),
   /**
    * TODO backend contract: POST /vendor/orders/:id/handoff/confirm
