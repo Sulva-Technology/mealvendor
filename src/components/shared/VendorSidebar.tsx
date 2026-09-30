@@ -6,16 +6,23 @@ import { usePathname } from 'next/navigation';
 import Image from 'next/image';
 import { navigation } from '@/src/config/navigation';
 import { useVendorRole } from '@/src/lib/hooks/useVendorRole';
+import { FeatureFlag, useFeatureFlag } from '@/src/lib/hooks/useFeatureFlag';
 import { clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 
 export function VendorSidebar() {
   const pathname = usePathname();
   const { isStaff } = useVendorRole();
+  const cloudPrinting = useFeatureFlag(FeatureFlag.CLOUD_PRINTING);
 
   // Settlements is owner-only (financials/payouts). Hide it from staff; the
   // /settlements route is also guarded server-side and by <OwnerOnly>.
-  const items = navigation.filter((item) => !(isStaff && item.href === '/settlements'));
+  // Flagged items (e.g. Printers) stay hidden until the flag is on for this vendor.
+  const items = navigation.filter(
+    (item) =>
+      !(isStaff && item.href === '/settlements') &&
+      !(item.flag === FeatureFlag.CLOUD_PRINTING && !cloudPrinting)
+  );
 
   return (
     <div className="flex-1 flex flex-col min-h-0 glass border-r">

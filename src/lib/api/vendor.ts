@@ -24,10 +24,16 @@ import type {
   MeSession,
   MenuItemSchedule,
   MenuMetadata,
+  MyFeatureFlags,
   NotificationRecord,
   OrderDetail,
   OrderSummary,
   DeviceTokenBody,
+  PrintJob,
+  PrintJobStatus,
+  PrinterRegistration,
+  ReceiptView,
+  RegisterPrinterBody,
   SettlementSummary,
   SettlementDetail,
   StoreAvailabilityState,
@@ -43,6 +49,7 @@ import type {
   VendorInventory,
   VendorMenuItem,
   VendorPayoutAccount,
+  VendorPrinter,
   VendorProfile,
   VendorReview,
   VendorSoupOption,
@@ -186,6 +193,12 @@ export const meApi = {
   get: () => fetchApi<MeSession>('/me'),
 };
 
+// --- Feature flags (test-mode cohort resolved server-side for this caller) ---
+export const featureFlagsApi = {
+  /** GET /me/feature-flags -> `{ cloud_printing: true, ... }`. */
+  mine: () => fetchApi<MyFeatureFlags>('/me/feature-flags'),
+};
+
 // --- Query keys ---
 export const qk = {
   me: () => ['me'] as const,
@@ -209,6 +222,10 @@ export const qk = {
   notifications: () => ['vendor', 'notifications'] as const,
   profile: () => ['vendor', 'profile'] as const,
   payoutAccount: () => ['vendor', 'payout-account'] as const,
+  featureFlags: () => ['me', 'feature-flags'] as const,
+  printers: () => ['vendor', 'printers'] as const,
+  printJobs: (status?: PrintJobStatus) => ['vendor', 'print-jobs', status ?? 'all'] as const,
+  receipt: (orderId: string) => ['vendor', 'order', orderId, 'receipt'] as const,
 };
 
 // --- Orders ---
@@ -236,6 +253,31 @@ export const ordersApi = {
    */
   confirmRiderPickup: (id: string) =>
     fetchApi<OrderDetail>(`/vendor/orders/${id}/handoff/confirm`, { method: 'POST' }),
+};
+
+// --- Cloud printing (kitchen tickets via Star CloudPRNT) ---
+// register / test-print are gated server-side by the cloud_printing feature flag.
+export const printingApi = {
+  list: () => fetchApi<VendorPrinter[]>('/vendor/printers'),
+  /** Returns the one-time serverUrl to paste into the printer. */
+  register: (body: RegisterPrinterBody) =>
+    fetchApi<PrinterRegistration>('/vendor/printers', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  /** Issues a new serverUrl; the old one stops working immediately. */
+  rotateKey: (printerId: string) =>
+    fetchApi<PrinterRegistration>(`/vendor/printers/${printerId}/rotate-key`, { method: 'POST' }),
+  revoke: (printerId: string) =>
+    fetchApi<VendorPrinter>(`/vendor/printers/${printerId}`, { method: 'DELETE' }),
+  testPrint: (printerId: string) =>
+    fetchApi<PrintJob>(`/vendor/printers/${printerId}/test-print`, { method: 'POST' }),
+  jobs: (params: { status?: PrintJobStatus; limit?: number } = {}) =>
+    fetchApi<PrintJob[]>(`/vendor/print-jobs${qs(params)}`),
+  receipt: (orderId: string) => fetchApi<ReceiptView>(`/vendor/orders/${orderId}/receipt`),
+  /** Re-queue the order's ticket to print now. 409 when the vendor has no printer. */
+  reprint: (orderId: string) =>
+    fetchApi<PrintJob>(`/vendor/orders/${orderId}/reprint`, { method: 'POST' }),
 };
 
 // --- Menu ---

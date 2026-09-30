@@ -576,6 +576,91 @@ export interface VendorOnboardResult {
   tokenRefreshRequired?: boolean;
 }
 
+// --- Feature flags (GET /me/feature-flags) ---
+/** Every flag resolved for the caller, test-mode cohort applied: `{ cloud_printing: true }`. */
+export type MyFeatureFlags = Record<string, boolean>;
+
+// --- Cloud printing (Star CloudPRNT kitchen tickets) ---
+export type PaperWidth = 32 | 42 | 48;
+export type PrintJobStatus = 'pending' | 'printing' | 'printed' | 'failed' | 'cancelled';
+export type PrintJobKind = 'order' | 'test';
+
+/** A printer as shown to its vendor. Never includes the key. */
+export interface VendorPrinter {
+  id: string;
+  vendorId: string;
+  name: string;
+  macAddress: string;
+  paperWidthChars: PaperWidth;
+  lastSeenAt: string | null;
+  lastStatusCode: string | null;
+  /** Polled within the last 2 minutes. */
+  online: boolean;
+  createdAt: string;
+}
+
+export interface RegisterPrinterBody {
+  name: string;
+  /** Any of 00:11:62:AA:BB:CC, 00-11-62-aa-bb-cc, 001162AABBCC. */
+  macAddress: string;
+  paperWidthChars?: PaperWidth;
+}
+
+/** Returned once on register / rotate-key: paste serverUrl into the printer's CloudPRNT settings. */
+export interface PrinterRegistration {
+  printer: VendorPrinter;
+  serverUrl: string;
+}
+
+export interface PrintJob {
+  id: string;
+  vendorId: string;
+  orderId: string | null;
+  orderNumber: string | null;
+  kind: PrintJobKind;
+  status: PrintJobStatus;
+  printAfter: string;
+  attempts: number;
+  printedAt: string | null;
+  lastError: string | null;
+  createdAt: string;
+}
+
+export interface ReceiptItem {
+  itemName: string;
+  quantity: number;
+  unitPriceKobo: number;
+  lineTotalKobo: number;
+  unitType: string;
+  soupName: string | null;
+  customization: Record<string, unknown>;
+}
+
+export interface Receipt {
+  orderId: string;
+  orderNumber: string;
+  vendorDisplayName: string;
+  serviceDate: string;
+  deliveryTime: string;
+  deliverySlotName: string;
+  campusTimezone: string;
+  customerName: string;
+  customerPhone: string | null;
+  locationName: string;
+  roomNumber: string | null;
+  deliveryMode: string;
+  specialInstructions: string | null;
+  foodSubtotalKobo: number;
+  paidAt: string | null;
+  items: ReceiptItem[];
+}
+
+/** Kitchen ticket data plus the exact text the printer receives. */
+export interface ReceiptView {
+  receipt: Receipt;
+  text: string;
+}
+
 // --- Envelope ---
 export interface ListEnvelope<T> {
   data: T[];

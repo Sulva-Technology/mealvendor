@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, Clock, CreditCard, MapPin, Package, ShieldCheck, Truck, UserRound } from 'lucide-react';
 import { SupportAction } from '@/src/components/shared/SupportAction';
+import { KitchenTicketCard } from '@/src/components/shared/KitchenTicketCard';
 import { TonalCard } from '@/src/components/shared/Cards';
 import { ErrorState, LoadingState } from '@/src/components/shared/QueryStates';
 import { StatusChip } from '@/src/components/shared/StatusChip';
@@ -191,6 +192,8 @@ export default function OrderDetailPage({ params }: { params: Promise<{ orderId:
               <p className="text-sm text-[var(--color-muted-foreground)]">No vendor action available for this status.</p>
             </TonalCard>
           )}
+
+          <KitchenTicketCard orderId={order.id} paid={!!order.paidAt} />
 
           <TonalCard>
             <h3 className="mb-4 text-sm font-semibold text-[var(--color-foreground)]">Order info</h3>
