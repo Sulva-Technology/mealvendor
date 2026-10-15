@@ -9,6 +9,7 @@ import { AppUpdatePrompt } from './AppUpdatePrompt';
 import { PendingApprovalBanner } from './PendingApprovalBanner';
 import { PushForeground } from './PushForeground';
 import { PushToaster } from './PushToaster';
+import { TutorialHost } from '@/src/components/tutorial/TutorialHost';
 
 export function VendorAppShell({ children }: { children: React.ReactNode }) {
   return (
@@ -37,6 +38,9 @@ export function VendorAppShell({ children }: { children: React.ReactNode }) {
       {/* Foreground push handling (toast/badge while tab focused) */}
       <PushForeground />
       <PushToaster />
+
+      {/* First-visit tour, per-page tutorials, and the ? help button */}
+      <TutorialHost />
 
       {/* PWA Install Prompt */}
       <InstallPrompt />

@@ -1,4 +1,4 @@
-import { LayoutDashboard, ShoppingBag, Clock, BookOpen, Calendar, Package, Wallet, MessageSquare, Settings } from 'lucide-react';
+import { LayoutDashboard, ShoppingBag, Clock, BookOpen, Calendar, Package, Wallet, MessageSquare, Settings, GraduationCap } from 'lucide-react';
 
 export const navigation = [
   { name: 'Dashboard', href: '/', icon: LayoutDashboard },
@@ -10,4 +10,5 @@ export const navigation = [
   { name: 'Settlements', href: '/settlements', icon: Wallet },
   { name: 'Reviews', href: '/reviews', icon: MessageSquare },
   { name: 'Settings', href: '/settings', icon: Settings },
+  { name: 'Guide', href: '/guide', icon: GraduationCap },
 ];
