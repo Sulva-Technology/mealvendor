@@ -108,6 +108,18 @@ interface FetchOptions extends RequestInit {
 }
 
 /**
+ * Unwrap the backend's `{ data }` success envelope. A `null` payload (e.g. no payout
+ * account yet) must come back as `null`, not as the envelope object itself, or callers
+ * would treat "nothing configured" as present.
+ */
+export function unwrapEnvelope(body: unknown): unknown {
+  if (body !== null && typeof body === 'object' && !Array.isArray(body) && 'data' in body) {
+    return (body as { data: unknown }).data;
+  }
+  return body;
+}
+
+/**
  * fetch wrapper: attaches auth + request/idempotency headers, unwraps the
  * `{ data }` envelope, transparently refreshes on a single 401, and normalizes errors.
  */
@@ -154,7 +166,7 @@ export async function fetchApi<T>(endpoint: string, options: FetchOptions = {}):
 
     const isJson = response.headers.get('content-type')?.includes('application/json');
     const data = isJson ? await response.json() : null;
-    return (data?.data ?? data) as T;
+    return unwrapEnvelope(data) as T;
   } catch (error) {
     let apiError: ApiError;
     if (error instanceof ApiError) {
