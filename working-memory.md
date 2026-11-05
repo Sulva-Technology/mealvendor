@@ -1,41 +1,39 @@
 # Working Memory
 
 ## Problem Summary
-- Implement vendor menu item image upload with backend signed URL flow.
+- Add an OpenRouter-powered vendor assistant that turns plain-language menu, price, and inventory requests into reviewable proposals.
 
 ## Product Goal
-- Vendors can upload/replace an image for an existing menu item, with local validation and visible backend errors.
+- Vendors can safely prepare menu, price, and inventory changes in plain language, then explicitly apply each action.
 
 ## Stack And Runtime Assumptions
 - Next.js App Router, TypeScript, React Query.
 - Vendor API uses JWT bearer auth through `fetchApi`.
-- Signed storage upload uses direct `PUT` to returned Supabase Storage URL.
+- OpenRouter is called only from a Next.js server route using a server-only API key.
 
 ## Confirmed Facts
-- Existing vendor logo upload already follows signed target -> raw binary upload -> confirm pattern.
-- Menu items expose `imageUrl`, which is a short-lived signed URL from backend responses.
+- Existing client APIs cover menu create/update/activate/deactivate and inventory set/adjust.
+- `POST /api/ai/vendor-assistant` validates a bounded context and validates the model output before returning it to the browser.
+- The assistant only generates proposals; existing authenticated vendor APIs perform the actual mutations after the vendor clicks Apply.
 
 ## Unknowns
-- Backend exact storage error strings are unknown; UI surfaces returned API/error messages as-is.
+- An OpenRouter key and supported model must be configured at deployment time.
 
 ## Active Files
-- `src/lib/api/types.ts`
-- `src/lib/api/vendor.ts`
-- `src/app/(dashboard)/menu/page.tsx`
-- `src/app/(dashboard)/menu/[itemId]/edit/page.tsx`
+- `src/app/api/ai/vendor-assistant/route.ts`
+- `src/app/(dashboard)/assistant/page.tsx`
+- `src/config/navigation.ts`
+- `.env.example`
 
 ## Decisions
-- Use raw HTTP `PUT` to `uploadUrl` instead of adding Supabase client dependency.
-- Validate MIME and 5 MB limit client-side before requesting upload URL; backend confirm remains final authority.
-- Render the confirmed `imageUrl` from fresh item response and update React Query cache immediately.
+- Keep the OpenRouter key server-only; no `NEXT_PUBLIC_` prefix.
+- Treat model output as untrusted: parse/validate it with Zod and never perform automatic mutations.
+- Send only the current menu, inventory, categories, and unit types necessary to map natural language to existing IDs.
 
 ## API Contracts
-- `POST /v1/vendor/menu-items/{itemId}/image/upload-url`
-- Body: `{ contentType, sizeBytes }`
-- Response: `{ uploadUrl, token, key }` unwrapped by `fetchApi`.
-- `POST /v1/vendor/menu-items/{itemId}/image/confirm`
-- Body: `{ key }`
-- Response: updated menu item.
+- `POST /api/ai/vendor-assistant`
+- Request: `{ command, context: { date, menuItems, inventory, categories, unitTypes } }`
+- Response: `{ summary, assumptions, proposals }` where every proposal matches a supported vendor mutation.
 
 ## Remaining Risks
-- `uploadUrl` is assumed to support direct `PUT`, matching current logo flow and user contract.
+- The assistant uses client-provided snapshots for planning; actual mutation authorization and concurrency remain enforced by existing backend APIs.

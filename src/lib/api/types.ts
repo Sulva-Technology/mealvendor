@@ -583,3 +583,55 @@ export interface ListEnvelope<T> {
 export interface ItemEnvelope<T> {
   data: T;
 }
+
+// --- Cloud printing (Star CloudPRNT) ---
+export type PaperWidth = 32 | 42 | 48;
+export type PrintJobStatus = 'pending' | 'printing' | 'printed' | 'failed' | 'cancelled';
+
+export interface VendorPrinter {
+  id: string;
+  vendorId: string;
+  name: string;
+  macAddress: string;
+  paperWidthChars: PaperWidth;
+  lastSeenAt: string | null;
+  lastStatusCode: string | null;
+  /** Polled within the last 2 minutes. */
+  online: boolean;
+  createdAt: string;
+}
+
+export interface RegisterPrinterBody {
+  name: string;
+  macAddress: string;
+  paperWidthChars?: PaperWidth;
+}
+
+/** serverUrl is only ever returned here — the vendor pastes it into the printer. */
+export interface PrinterRegistration {
+  printer: VendorPrinter;
+  serverUrl: string;
+}
+
+export interface PrintJob {
+  id: string;
+  vendorId: string;
+  orderId: string | null;
+  orderNumber: string | null;
+  kind: 'order' | 'test';
+  status: PrintJobStatus;
+  printAfter: string;
+  attempts: number;
+  printedAt: string | null;
+  lastError: string | null;
+  createdAt: string;
+}
+
+export interface ReceiptView {
+  receipt: Record<string, unknown> & { orderNumber: string };
+  /** The ticket exactly as printed (48-column preview). */
+  text: string;
+}
+
+/** GET /me/feature-flags — flag key → enabled for the caller. */
+export type FeatureFlagMap = Record<string, boolean>;

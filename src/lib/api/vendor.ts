@@ -1,5 +1,12 @@
 import { fetchApi } from './client';
 import type {
+  FeatureFlagMap,
+  PrintJob,
+  PrintJobStatus,
+  PrinterRegistration,
+  ReceiptView,
+  RegisterPrinterBody,
+  VendorPrinter,
   AcceptInviteBody,
   AuthUser,
   Campus,
@@ -209,6 +216,10 @@ export const qk = {
   notifications: () => ['vendor', 'notifications'] as const,
   profile: () => ['vendor', 'profile'] as const,
   payoutAccount: () => ['vendor', 'payout-account'] as const,
+  featureFlags: () => ['me', 'feature-flags'] as const,
+  printers: () => ['vendor', 'printers'] as const,
+  printJobs: (status?: PrintJobStatus) => ['vendor', 'print-jobs', status ?? 'all'] as const,
+  receipt: (orderId: string) => ['vendor', 'receipt', orderId] as const,
 };
 
 // --- Orders ---
@@ -462,3 +473,27 @@ export async function uploadMenuItemImageBinary(uploadUrl: string, file: File | 
 
 // Re-export envelope helpers for any direct callers.
 export type { ListEnvelope, ItemEnvelope };
+
+// --- Feature flags (test mode) ---
+export const featureFlagsApi = {
+  /** Every backend feature flag resolved for the signed-in user/vendor. */
+  mine: () => fetchApi<FeatureFlagMap>('/me/feature-flags'),
+};
+
+// --- Cloud printing ---
+export const printingApi = {
+  list: () => fetchApi<VendorPrinter[]>('/vendor/printers'),
+  register: (body: RegisterPrinterBody) =>
+    fetchApi<PrinterRegistration>('/vendor/printers', { method: 'POST', body: JSON.stringify(body) }),
+  remove: (printerId: string) =>
+    fetchApi<VendorPrinter>(`/vendor/printers/${printerId}`, { method: 'DELETE' }),
+  rotateKey: (printerId: string) =>
+    fetchApi<PrinterRegistration>(`/vendor/printers/${printerId}/rotate-key`, { method: 'POST' }),
+  testPrint: (printerId: string) =>
+    fetchApi<PrintJob>(`/vendor/printers/${printerId}/test-print`, { method: 'POST' }),
+  jobs: (status?: PrintJobStatus) =>
+    fetchApi<PrintJob[]>(`/vendor/print-jobs${qs({ status, limit: 50 })}`),
+  receipt: (orderId: string) => fetchApi<ReceiptView>(`/vendor/orders/${orderId}/receipt`),
+  reprint: (orderId: string) =>
+    fetchApi<PrintJob>(`/vendor/orders/${orderId}/reprint`, { method: 'POST' }),
+};
