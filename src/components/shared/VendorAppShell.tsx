@@ -10,6 +10,7 @@ import { PendingApprovalBanner } from './PendingApprovalBanner';
 import { PushForeground } from './PushForeground';
 import { PushToaster } from './PushToaster';
 import { TutorialHost } from '@/src/components/tutorial/TutorialHost';
+import { FloatingVendorAssistant } from './FloatingVendorAssistant';
 
 export function VendorAppShell({ children }: { children: React.ReactNode }) {
   return (
@@ -41,6 +42,7 @@ export function VendorAppShell({ children }: { children: React.ReactNode }) {
 
       {/* First-visit tour, per-page tutorials, and the ? help button */}
       <TutorialHost />
+      <FloatingVendorAssistant />
 
       {/* PWA Install Prompt */}
       <InstallPrompt />

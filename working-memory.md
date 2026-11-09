@@ -1,7 +1,7 @@
 # Working Memory
 
 ## Problem Summary
-- Add an OpenRouter-powered vendor assistant that turns plain-language menu, price, and inventory requests into reviewable proposals.
+- Add an OpenRouter-powered vendor assistant that turns plain-language menu, price, and inventory requests into reviewable proposals, available globally as a floating chat launcher.
 
 ## Product Goal
 - Vendors can safely prepare menu, price, and inventory changes in plain language, then explicitly apply each action.
@@ -22,6 +22,8 @@
 ## Active Files
 - `src/app/api/ai/vendor-assistant/route.ts`
 - `src/app/(dashboard)/assistant/page.tsx`
+- `src/components/shared/FloatingVendorAssistant.tsx`
+- `src/components/shared/VendorAppShell.tsx`
 - `src/config/navigation.ts`
 - `.env.example`
 
@@ -29,6 +31,7 @@
 - Keep the OpenRouter key server-only; no `NEXT_PUBLIC_` prefix.
 - Treat model output as untrusted: parse/validate it with Zod and never perform automatic mutations.
 - Send only the current menu, inventory, categories, and unit types necessary to map natural language to existing IDs.
+- Mount the launcher in the dashboard shell and fetch assistant context only after the vendor opens it.
 
 ## API Contracts
 - `POST /api/ai/vendor-assistant`
